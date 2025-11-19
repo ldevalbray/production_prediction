@@ -15,59 +15,61 @@ from pathlib import Path
 block_cipher = None
 
 # Vérifier que le frontend est compilé
-frontend_build = Path('frontend/build')
+# Les chemins sont relatifs à la racine du projet (où PyInstaller est exécuté)
+base_dir = Path(__file__).parent.parent
+frontend_build = base_dir / 'frontend' / 'build'
 if not frontend_build.exists() or not (frontend_build / 'index.html').exists():
-    print("⚠️  ATTENTION: Le frontend React n'est pas compilé!")
-    print("   Veuillez exécuter: cd frontend && npm run build")
-    print("   Poursuite de la génération sans le frontend...")
+    print("[WARNING] ATTENTION: Le frontend React n'est pas compile!")
+    print("   Veuillez executer: cd frontend && npm run build")
+    print("   Poursuite de la generation sans le frontend...")
 
-# Scripts Python à inclure
+# Scripts Python à inclure (chemins relatifs à la racine du projet)
 scripts = [
-    'app.py',  # Point d'entrée principal (serveur Flask)
-    'scripts/run_daily_cycle.py',
-    'scripts/forecast_next3days_v3.py',
-    'scripts/auto_update_model_v4.py',
-    'scripts/train_model.py',
+    str(base_dir / 'app.py'),  # Point d'entrée principal (serveur Flask)
+    str(base_dir / 'scripts' / 'run_daily_cycle.py'),
+    str(base_dir / 'scripts' / 'forecast_next3days_v3.py'),
+    str(base_dir / 'scripts' / 'auto_update_model_v4.py'),
+    str(base_dir / 'scripts' / 'train_model.py'),
 ]
 
-# Fichiers de données à inclure
+# Fichiers de données à inclure (chemins relatifs à la racine du projet)
 datas = [
     # Fichiers de données essentiels (depuis data/)
-    ('data/recoltes_fraises.xlsx', '.'),
-    ('data/meteo_dataset.csv', '.'),
-    ('assets/splash.png', 'assets'),
+    (str(base_dir / 'data' / 'recoltes_fraises.xlsx'), '.'),
+    (str(base_dir / 'data' / 'meteo_dataset.csv'), '.'),
+    (str(base_dir / 'assets' / 'splash.png'), 'assets'),
     # Scripts Python appelés dynamiquement (depuis scripts/)
-    ('scripts/run_daily_cycle.py', '.'),
-    ('scripts/forecast_next3days_v3.py', '.'),
-    ('scripts/auto_update_model_v4.py', '.'),
-    ('scripts/train_model.py', '.'),
-    ('scripts/update_meteo_dataset.py', '.'),
+    (str(base_dir / 'scripts' / 'run_daily_cycle.py'), '.'),
+    (str(base_dir / 'scripts' / 'forecast_next3days_v3.py'), '.'),
+    (str(base_dir / 'scripts' / 'auto_update_model_v4.py'), '.'),
+    (str(base_dir / 'scripts' / 'train_model.py'), '.'),
+    (str(base_dir / 'scripts' / 'update_meteo_dataset.py'), '.'),
     # Modules Python nécessaires
-    ('database.py', '.'),
-    ('data_loader.py', '.'),
-    ('logger_config.py', '.'),
-    ('validators.py', '.'),
-    ('pyinstaller_utils.py', '.'),
-    ('system_tray.py', '.'),
+    (str(base_dir / 'database.py'), '.'),
+    (str(base_dir / 'data_loader.py'), '.'),
+    (str(base_dir / 'logger_config.py'), '.'),
+    (str(base_dir / 'validators.py'), '.'),
+    (str(base_dir / 'pyinstaller_utils.py'), '.'),
+    (str(base_dir / 'system_tray.py'), '.'),
 ]
 
 # Ajouter les fichiers optionnels s'ils existent
 optional_files = [
     # Base de données SQLite (créée au runtime si absente)
-    ('recoltes.db', '.'),
+    (base_dir / 'recoltes.db', '.'),
     # Modèle ML (peut être généré au runtime) - depuis models/
-    ('models/model_fraises_v2.pkl', '.'),
+    (base_dir / 'models' / 'model_fraises_v2.pkl', '.'),
     # Modules optionnels
-    ('cache_utils.py', '.'),
-    ('config.py', '.'),
+    (base_dir / 'cache_utils.py', '.'),
+    (base_dir / 'config.py', '.'),
 ]
 
 for file_path, dest in optional_files:
-    if Path(file_path).exists():
-        datas.append((file_path, dest))
-        print(f"✅ Fichier optionnel inclus : {file_path}")
+    if file_path.exists():
+        datas.append((str(file_path), dest))
+        print(f"[OK] Fichier optionnel inclus : {file_path.name}")
     else:
-        print(f"⚠️  Fichier optionnel non trouvé (sera créé au runtime si nécessaire) : {file_path}")
+        print(f"[WARNING] Fichier optionnel non trouve (sera cree au runtime si necessaire) : {file_path.name}")
 
 # Inclure le frontend React compilé si disponible
 if frontend_build.exists() and (frontend_build / 'index.html').exists():
@@ -82,9 +84,9 @@ if frontend_build.exists() and (frontend_build / 'index.html').exists():
             dest_path = 'frontend/build' / rel_path.parent
             frontend_files.append((str(src_path), str(dest_path)))
     datas.extend(frontend_files)
-    print(f"✅ Frontend React inclus ({len(frontend_files)} fichiers)")
+    print(f"[OK] Frontend React inclus ({len(frontend_files)} fichiers)")
 else:
-    print("⚠️  Frontend React non inclus (non compilé)")
+    print("[WARNING] Frontend React non inclus (non compile)")
 
 # Modules cachés nécessaires
 hiddenimports = [
@@ -125,7 +127,7 @@ hiddenimports = [
 ]
 
 a = Analysis(
-    ['app.py'],  # Point d'entrée: serveur Flask avec interface web
+    [str(base_dir / 'app.py')],  # Point d'entrée: serveur Flask avec interface web
     pathex=[],
     binaries=[],
     datas=datas,
@@ -160,7 +162,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,  # Ajoutez un fichier .ico ici si vous en avez un
-    splash='assets/splash.png',
+    splash=str(base_dir / 'assets' / 'splash.png'),
 )
 
 coll = COLLECT(

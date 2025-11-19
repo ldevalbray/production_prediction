@@ -148,6 +148,18 @@ def init_database():
                 )
             """)
             
+            # Table: schema_version (gestion des versions de schéma pour les migrations)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY
+                )
+            """)
+            
+            # Initialiser la version du schéma à 1 si la table est vide
+            cursor.execute("SELECT COUNT(*) FROM schema_version")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("INSERT INTO schema_version (version) VALUES (1)")
+            
             # Index pour améliorer les performances
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_recoltes_date ON recoltes(date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_recoltes_variety ON recoltes(variety)")

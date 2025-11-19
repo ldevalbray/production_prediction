@@ -100,6 +100,8 @@ L'application sera accessible sur `http://127.0.0.1:5000`
 - **Base de données** : `docs/README_DATABASE.md`
 - **Packaging** : `docs/README_PACKAGING.md`
 - **Build** : `docs/GUIDE_BUILD.md`
+- **Mise en production** : `docs/FLOW_MISE_EN_PRODUCTION.md` ⭐
+- **Mise à jour automatique** : `docs/GUIDE_MISE_A_JOUR.md`
 
 ## 🔧 Configuration
 

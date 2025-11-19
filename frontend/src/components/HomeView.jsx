@@ -8,6 +8,7 @@ import { Skeleton } from './ui/skeleton';
 import { Separator } from './ui/separator';
 import { Play, Plus, Package, Calendar, TrendingUp, Loader2, AlertCircle, Edit2, Trash2, Thermometer, Droplets, Sun } from 'lucide-react';
 import DataEntryModal from './DataEntryModal';
+import { UpdateNotification } from './UpdateNotification';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -226,6 +227,9 @@ function HomeView({ onRunScript, status, loading }) {
 
   return (
     <div className="space-y-6">
+      {/* Notification de mise à jour */}
+      <UpdateNotification />
+      
       {/* CTAs principaux */}
       <motion.div {...fadeIn} className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Button
