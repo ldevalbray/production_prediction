@@ -5,6 +5,9 @@ import importlib.util
 from datetime import datetime
 from pathlib import Path
 
+# Ajouter le répertoire parent au path pour les imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # Import de l'utilitaire PyInstaller
 try:
     from pyinstaller_utils import is_pyinstaller, get_script_path
@@ -13,6 +16,10 @@ except ImportError:
     def is_pyinstaller():
         return False
     def get_script_path(script_name):
+        # Chercher dans scripts/
+        scripts_path = Path(__file__).parent / script_name
+        if scripts_path.exists():
+            return str(scripts_path)
         return script_name
 
 def run_script(script_name):

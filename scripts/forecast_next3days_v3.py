@@ -8,19 +8,39 @@ from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook
 
 # Import de l'utilitaire PyInstaller pour gérer les chemins
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 try:
-    from pyinstaller_utils import get_base_path, get_resource_path
+    from pyinstaller_utils import get_base_path, get_resource_path, is_pyinstaller
 except ImportError:
     def get_base_path():
-        return Path(__file__).parent
+        return Path(__file__).parent.parent
     def get_resource_path(relative_path):
-        return Path(__file__).parent / relative_path
+        base = Path(__file__).parent.parent
+        # Chercher dans data/ ou models/ selon le type de fichier
+        if relative_path.endswith('.xlsx') or relative_path.endswith('.csv'):
+            data_path = base / "data" / relative_path
+            if data_path.exists():
+                return data_path
+        elif relative_path.endswith('.pkl'):
+            model_path = base / "models" / relative_path
+            if model_path.exists():
+                return model_path
+        # Fallback: chercher à la racine
+        return base / relative_path
+    def is_pyinstaller():
+        return False
 
 # === PARAMÈTRES GÉNÉRAUX ===
 BASE_PATH = get_base_path()
-EXCEL_PATH = str(get_resource_path("recoltes_fraises.xlsx"))
-MODEL_PATH = str(get_resource_path("model_fraises_v2.pkl"))
-METEO_PATH = str(get_resource_path("meteo_dataset.csv"))
+# Utiliser config.py si disponible
+try:
+    from config import EXCEL_PATH, MODEL_PATH, WEATHER_PATH as METEO_PATH
+except ImportError:
+    EXCEL_PATH = str(get_resource_path("recoltes_fraises.xlsx"))
+    MODEL_PATH = str(get_resource_path("model_fraises_v2.pkl"))
+    METEO_PATH = str(get_resource_path("meteo_dataset.csv"))
 FORECASTS_DIR = BASE_PATH / "forecasts"  # Dans le dossier de l'exécutable, pas dans _internal
 LAT, LON = 43.12, 6.14  # Hyères
 FORECAST_DAYS = 7

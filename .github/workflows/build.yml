@@ -47,7 +47,8 @@ jobs:
         run: npm run build
       
       - name: Build Windows executable
-        run: python build_windows.py || exit 1
+        run: python scripts/build_windows.py
+        shell: pwsh
       
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
@@ -103,7 +104,7 @@ jobs:
         run: npm run build
       
       - name: Build macOS application
-        run: python build_macos.py || exit 1
+        run: python scripts/build_macos.py
       
       - name: Upload macOS application
         uses: actions/upload-artifact@v4

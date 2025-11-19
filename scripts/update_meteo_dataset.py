@@ -4,11 +4,24 @@ import requests
 from datetime import datetime, timedelta
 from pathlib import Path
 import sys
+import os
+
+# Ajouter le répertoire parent au path pour les imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # === PARAMÈTRES ===
-WEATHER_PATH = "meteo_dataset.csv"
-LAT, LON = 43.12, 6.14  # Hyères (cohérent avec forecast_next3days_v3.py)
-TIMEZONE = "Europe/Paris"
+# Utiliser config.py si disponible, sinon fallback
+try:
+    from config import WEATHER_PATH as WEATHER_PATH_CONFIG, LAT, LON, TIMEZONE
+    WEATHER_PATH = WEATHER_PATH_CONFIG
+except ImportError:
+    # Fallback: chercher dans data/ puis à la racine
+    BASE_DIR = Path(__file__).parent.parent.resolve()
+    data_path = BASE_DIR / "data" / "meteo_dataset.csv"
+    root_path = BASE_DIR / "meteo_dataset.csv"
+    WEATHER_PATH = str(data_path if data_path.exists() else root_path)
+    LAT, LON = 43.12, 6.14  # Hyères
+    TIMEZONE = "Europe/Paris"
 
 def get_day_of_year(date):
     """Calcule le jour de l'année (1-365/366)"""

@@ -98,16 +98,16 @@ def build_executable():
     # Nom de l'application
     app_name = "PepiniereValbray"
     
-    # Sélectionner le fichier .spec selon la plateforme
+    # Sélectionner le fichier .spec selon la plateforme (depuis build_config/)
     if sys.platform == "win32":
-        spec_file = "pepiniere_valbray_windows.spec"
+        spec_file = "build_config/pepiniere_valbray_windows.spec"
         print("🪟 Plateforme détectée : Windows")
     elif sys.platform == "darwin":
-        spec_file = "pepiniere_valbray_macos.spec"
+        spec_file = "build_config/pepiniere_valbray_macos.spec"
         print("🍎 Plateforme détectée : macOS")
     else:
         # Linux ou autre - utiliser le fichier .spec générique
-        spec_file = "pepiniere_valbray.spec"
+        spec_file = "build_config/pepiniere_valbray.spec"
         print(f"🐧 Plateforme détectée : {sys.platform}")
     
     if not Path(spec_file).exists():

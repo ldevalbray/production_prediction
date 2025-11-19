@@ -8,24 +8,49 @@ import os
 import sys
 
 # Import de l'utilitaire PyInstaller pour gérer les chemins
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 try:
-    from pyinstaller_utils import get_base_path, get_resource_path, get_script_path
+    from pyinstaller_utils import get_base_path, get_resource_path, get_script_path, is_pyinstaller
 except ImportError:
     def get_base_path():
-        return Path(__file__).parent
+        return Path(__file__).parent.parent
     def get_resource_path(relative_path):
-        return Path(__file__).parent / relative_path
+        base = Path(__file__).parent.parent
+        # Chercher dans data/ ou models/ selon le type de fichier
+        if relative_path.endswith('.xlsx') or relative_path.endswith('.csv'):
+            data_path = base / "data" / relative_path
+            if data_path.exists():
+                return data_path
+        elif relative_path.endswith('.pkl'):
+            model_path = base / "models" / relative_path
+            if model_path.exists():
+                return model_path
+        # Fallback: chercher à la racine
+        return base / relative_path
     def get_script_path(script_name):
+        # Chercher dans scripts/
+        scripts_path = Path(__file__).parent.parent / "scripts" / script_name
+        if scripts_path.exists():
+            return str(scripts_path)
         return script_name
+    def is_pyinstaller():
+        return False
 
 # === PARAMÈTRES ===
 BASE_PATH = get_base_path()
-EXCEL_PATH = str(get_resource_path("recoltes_fraises.xlsx"))
-WEATHER_PATH = str(get_resource_path("meteo_dataset.csv"))
-DATASET_PATH = str(BASE_PATH / "dataset_ready_for_model.csv")  # Créé dans le dossier de l'exécutable
+# Utiliser config.py si disponible
+try:
+    from config import EXCEL_PATH, WEATHER_PATH, DATASET_PATH, MODEL_PATH, ARCHIVE_DIR
+    MODEL_OUTPUT = MODEL_PATH
+    ARCHIVE_DIR = Path(ARCHIVE_DIR)
+except ImportError:
+    EXCEL_PATH = str(get_resource_path("recoltes_fraises.xlsx"))
+    WEATHER_PATH = str(get_resource_path("meteo_dataset.csv"))
+    DATASET_PATH = str(BASE_PATH / "dataset_ready_for_model.csv")  # Créé dans le dossier de l'exécutable
+    MODEL_OUTPUT = str(BASE_PATH / "models" / "model_fraises_v2.pkl")  # Sauvegardé dans models/
+    ARCHIVE_DIR = BASE_PATH / "models" / "models_archive"  # Dans models/
 MODEL_SCRIPT = get_script_path("train_model.py")
-MODEL_OUTPUT = str(BASE_PATH / "model_fraises_v2.pkl")  # Sauvegardé dans le dossier de l'exécutable
-ARCHIVE_DIR = BASE_PATH / "models_archive"  # Dans le dossier de l'exécutable
 UPDATE_METEO_SCRIPT = get_script_path("update_meteo_dataset.py")
 
 # === 0. MISE À JOUR DES DONNÉES MÉTÉO ===

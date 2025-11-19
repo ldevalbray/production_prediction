@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Script pour créer un exécutable macOS (.app) de l'application Pépinière Valbray.
-À exécuter sur une machine macOS avec Python installé.
+Script pour créer un exécutable Windows de l'application Pépinière Valbray.
+À exécuter sur une machine Windows avec Python installé.
 
 Ce script compile automatiquement le frontend React avant de générer l'exécutable.
 """
@@ -9,6 +10,15 @@ import subprocess
 import sys
 import os
 from pathlib import Path
+
+# Configurer l'encodage UTF-8 pour Windows (nécessaire pour GitHub Actions)
+if sys.platform == "win32":
+    import io
+    # Forcer UTF-8 pour stdout et stderr
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 def check_pyinstaller():
     """Vérifie si PyInstaller est installé."""
@@ -33,13 +43,13 @@ def build_frontend():
     build_dir = frontend_dir / "build"
     
     if not frontend_dir.exists():
-        print("⚠️  Dossier frontend/ introuvable. Poursuite sans frontend...")
+        print("[WARNING] Dossier frontend/ introuvable. Poursuite sans frontend...")
         return False
     
-    print("📦 Compilation du frontend React...")
+    print("[INFO] Compilation du frontend React...")
     
     if not check_node():
-        print("⚠️  Node.js/npm non installé. Le frontend ne sera pas inclus.")
+        print("[WARNING] Node.js/npm non installe. Le frontend ne sera pas inclus.")
         print("   Installez Node.js depuis https://nodejs.org/")
         return False
     
@@ -65,36 +75,37 @@ def build_frontend():
         )
         
         if build_dir.exists() and (build_dir / "index.html").exists():
-            print("✅ Frontend compilé avec succès!")
+            print("[SUCCESS] Frontend compile avec succes!")
             return True
         else:
-            print("⚠️  La compilation a réussi mais index.html est introuvable.")
+            print("[WARNING] La compilation a reussi mais index.html est introuvable.")
             return False
             
     except subprocess.CalledProcessError as e:
-        print(f"❌ Erreur lors de la compilation du frontend:")
-        print(f"   {e.stderr}")
+        print(f"[ERROR] Erreur lors de la compilation du frontend:")
+        if e.stderr:
+            print(f"   {e.stderr}")
         return False
     except Exception as e:
-        print(f"❌ Erreur inattendue: {e}")
+        print(f"[ERROR] Erreur inattendue: {e}")
         return False
 
 def build_executable():
-    """Construit l'application macOS (.app) avec PyInstaller."""
-    print("🔨 Construction de l'application macOS...")
+    """Construit l'exécutable Windows avec PyInstaller."""
+    print("[INFO] Construction de l'executable Windows...")
     print("=" * 60)
     
-    # Vérifier que nous sommes sur macOS
-    if sys.platform != "darwin":
-        print("❌ Ce script doit être exécuté sur macOS.")
-        print("   Pour Windows, utilisez build_windows.py")
+    # Vérifier que nous sommes sur Windows
+    if sys.platform != "win32":
+        print("[ERROR] Ce script doit etre execute sur Windows.")
+        print("   Pour macOS, utilisez build_macos.py")
         print("   Pour Linux, utilisez build_executable.py")
         return False
     
     # Vérifier PyInstaller
     if not check_pyinstaller():
-        print("❌ PyInstaller n'est pas installé.")
-        print("👉 Installez-le avec : pip install pyinstaller")
+        print("[ERROR] PyInstaller n'est pas installe.")
+        print("[INFO] Installez-le avec : pip install pyinstaller")
         return False
     
     # Compiler le frontend React
@@ -105,15 +116,15 @@ def build_executable():
     # Nom de l'application
     app_name = "PepiniereValbray"
     
-    # Utiliser le fichier .spec pour macOS
-    spec_file = "pepiniere_valbray_macos.spec"
+    # Utiliser le fichier .spec pour Windows (depuis build_config/)
+    spec_file = "build_config/pepiniere_valbray_windows.spec"
     
     if not Path(spec_file).exists():
-        print(f"❌ Fichier .spec introuvable : {spec_file}")
+        print(f"[ERROR] Fichier .spec introuvable : {spec_file}")
         return False
     
     if not Path("app.py").exists():
-        print(f"❌ Fichier principal introuvable : app.py")
+        print(f"[ERROR] Fichier principal introuvable : app.py")
         return False
     
     # Options PyInstaller avec le fichier .spec
@@ -125,7 +136,7 @@ def build_executable():
     # Commande complète avec le fichier .spec
     cmd = ["pyinstaller"] + options + [spec_file]
     
-    print(f"📦 Commande PyInstaller :")
+    print(f"[INFO] Commande PyInstaller :")
     print(" ".join(cmd))
     print("=" * 60)
     print()
@@ -134,45 +145,40 @@ def build_executable():
         # Exécuter PyInstaller
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         
-        # Vérifier que l'application a bien été créée
-        app_path = Path("dist") / f"{app_name}.app"
-        if not app_path.exists():
-            raise FileNotFoundError(f"L'application n'a pas été créée : {app_path}")
+        # Vérifier que l'exécutable a bien été créé
+        exe_path = Path("dist") / app_name / f"{app_name}.exe"
+        if not exe_path.exists():
+            raise FileNotFoundError(f"L'exécutable n'a pas été créé : {exe_path}")
         
         print()
         print("=" * 60)
-        print("✅ Application macOS créée avec succès !")
+        print("[SUCCESS] Executable Windows cree avec succes !")
         print()
         
-        print(f"📦 Application macOS : {app_path}")
+        print(f"[INFO] Executable Windows : {exe_path}")
         
         print()
-        print("📋 IMPORTANT pour la distribution :")
-        print("   1. Distribuez le fichier 'dist/PepiniereValbray.app'")
-        print("   2. L'utilisateur peut double-cliquer sur l'application pour la lancer")
-        print("   3. Les fichiers de données sont inclus dans l'application")
+        print("[INFO] IMPORTANT pour la distribution :")
+        print("   1. Distribuez TOUT le dossier 'dist/PepiniereValbray/'")
+        print("   2. L'utilisateur doit double-cliquer sur PepiniereValbray.exe")
+        print("   3. Les fichiers de donnees sont inclus dans l'executable")
         if frontend_built:
-            print("   4. ✅ Le frontend React est inclus")
+            print("   4. [OK] Le frontend React est inclus")
         else:
-            print("   4. ⚠️  Le frontend React n'est PAS inclus (non compilé)")
-        print("   5. L'application démarre un serveur web local sur http://127.0.0.1:5000")
-        print("   6. Testez l'application avant de la distribuer")
+            print("   4. [WARNING] Le frontend React n'est PAS inclus (non compile)")
+        print("   5. L'application demarre un serveur web local sur http://127.0.0.1:5000")
+        print("   6. Testez l'executable avant de le distribuer")
         print()
-        print("⚠️  Note sur la signature de code (optionnel mais recommandé) :")
-        print("   Pour distribuer l'application sans avertissements de sécurité,")
-        print("   vous pouvez signer l'application avec votre certificat Apple Developer :")
-        print("   codesign --deep --force --verify --verbose --sign 'Developer ID Application: Votre Nom' dist/PepiniereValbray.app")
-        print()
-        print("💡 Pour créer un installateur macOS (.dmg), vous pouvez utiliser:")
-        print("   - create-dmg (gratuit): npm install -g create-dmg")
-        print("   - hdiutil (intégré macOS): hdiutil create -volname 'PepiniereValbray' -srcfolder dist/PepiniereValbray.app -ov -format UDZO dist/PepiniereValbray.dmg")
+        print("[INFO] Pour creer un installateur Windows, vous pouvez utiliser:")
+        print("   - Inno Setup (gratuit): https://jrsoftware.org/isinfo.php")
+        print("   - NSIS (gratuit): https://nsis.sourceforge.io/")
         print()
         
         return True
         
     except subprocess.CalledProcessError as e:
         print()
-        print("❌ Erreur lors de la construction de l'application")
+        print("[ERROR] Erreur lors de la construction de l'executable")
         print(f"   Code retour : {e.returncode}")
         if e.stdout:
             print("   Sortie standard :")
@@ -183,7 +189,7 @@ def build_executable():
         raise  # Lever l'exception pour que GitHub Actions détecte l'échec
     except Exception as e:
         print()
-        print(f"❌ Erreur inattendue : {e}")
+        print(f"[ERROR] Erreur inattendue : {e}")
         import traceback
         traceback.print_exc()
         raise  # Lever l'exception pour que GitHub Actions détecte l'échec

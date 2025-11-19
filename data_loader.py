@@ -6,7 +6,15 @@ import pandas as pd
 from pathlib import Path
 import os
 
-EXCEL_PATH = "recoltes_fraises.xlsx"
+# Utiliser config.py si disponible, sinon fallback
+try:
+    from config import EXCEL_PATH
+except ImportError:
+    # Fallback: chercher dans data/ puis à la racine
+    BASE_DIR = Path(__file__).parent.resolve()
+    data_path = BASE_DIR / "data" / "recoltes_fraises.xlsx"
+    root_path = BASE_DIR / "recoltes_fraises.xlsx"
+    EXCEL_PATH = str(data_path if data_path.exists() else root_path)
 USE_DB = os.environ.get("USE_DB", "true").lower() == "true"
 
 def _try_db():

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script pour créer un exécutable Windows de l'application Pépinière Valbray.
-À exécuter sur une machine Windows avec Python installé.
+Script pour créer un exécutable macOS (.app) de l'application Pépinière Valbray.
+À exécuter sur une machine macOS avec Python installé.
 
 Ce script compile automatiquement le frontend React avant de générer l'exécutable.
 """
@@ -80,14 +80,14 @@ def build_frontend():
         return False
 
 def build_executable():
-    """Construit l'exécutable Windows avec PyInstaller."""
-    print("🔨 Construction de l'exécutable Windows...")
+    """Construit l'application macOS (.app) avec PyInstaller."""
+    print("🔨 Construction de l'application macOS...")
     print("=" * 60)
     
-    # Vérifier que nous sommes sur Windows
-    if sys.platform != "win32":
-        print("❌ Ce script doit être exécuté sur Windows.")
-        print("   Pour macOS, utilisez build_macos.py")
+    # Vérifier que nous sommes sur macOS
+    if sys.platform != "darwin":
+        print("❌ Ce script doit être exécuté sur macOS.")
+        print("   Pour Windows, utilisez build_windows.py")
         print("   Pour Linux, utilisez build_executable.py")
         return False
     
@@ -105,8 +105,8 @@ def build_executable():
     # Nom de l'application
     app_name = "PepiniereValbray"
     
-    # Utiliser le fichier .spec pour Windows
-    spec_file = "pepiniere_valbray_windows.spec"
+    # Utiliser le fichier .spec pour macOS (depuis build_config/)
+    spec_file = "build_config/pepiniere_valbray_macos.spec"
     
     if not Path(spec_file).exists():
         print(f"❌ Fichier .spec introuvable : {spec_file}")
@@ -134,40 +134,45 @@ def build_executable():
         # Exécuter PyInstaller
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         
-        # Vérifier que l'exécutable a bien été créé
-        exe_path = Path("dist") / app_name / f"{app_name}.exe"
-        if not exe_path.exists():
-            raise FileNotFoundError(f"L'exécutable n'a pas été créé : {exe_path}")
+        # Vérifier que l'application a bien été créée
+        app_path = Path("dist") / f"{app_name}.app"
+        if not app_path.exists():
+            raise FileNotFoundError(f"L'application n'a pas été créée : {app_path}")
         
         print()
         print("=" * 60)
-        print("✅ Exécutable Windows créé avec succès !")
+        print("✅ Application macOS créée avec succès !")
         print()
         
-        print(f"📦 Exécutable Windows : {exe_path}")
+        print(f"📦 Application macOS : {app_path}")
         
         print()
         print("📋 IMPORTANT pour la distribution :")
-        print("   1. Distribuez TOUT le dossier 'dist/PepiniereValbray/'")
-        print("   2. L'utilisateur doit double-cliquer sur PepiniereValbray.exe")
-        print("   3. Les fichiers de données sont inclus dans l'exécutable")
+        print("   1. Distribuez le fichier 'dist/PepiniereValbray.app'")
+        print("   2. L'utilisateur peut double-cliquer sur l'application pour la lancer")
+        print("   3. Les fichiers de données sont inclus dans l'application")
         if frontend_built:
             print("   4. ✅ Le frontend React est inclus")
         else:
             print("   4. ⚠️  Le frontend React n'est PAS inclus (non compilé)")
         print("   5. L'application démarre un serveur web local sur http://127.0.0.1:5000")
-        print("   6. Testez l'exécutable avant de le distribuer")
+        print("   6. Testez l'application avant de la distribuer")
         print()
-        print("💡 Pour créer un installateur Windows, vous pouvez utiliser:")
-        print("   - Inno Setup (gratuit): https://jrsoftware.org/isinfo.php")
-        print("   - NSIS (gratuit): https://nsis.sourceforge.io/")
+        print("⚠️  Note sur la signature de code (optionnel mais recommandé) :")
+        print("   Pour distribuer l'application sans avertissements de sécurité,")
+        print("   vous pouvez signer l'application avec votre certificat Apple Developer :")
+        print("   codesign --deep --force --verify --verbose --sign 'Developer ID Application: Votre Nom' dist/PepiniereValbray.app")
+        print()
+        print("💡 Pour créer un installateur macOS (.dmg), vous pouvez utiliser:")
+        print("   - create-dmg (gratuit): npm install -g create-dmg")
+        print("   - hdiutil (intégré macOS): hdiutil create -volname 'PepiniereValbray' -srcfolder dist/PepiniereValbray.app -ov -format UDZO dist/PepiniereValbray.dmg")
         print()
         
         return True
         
     except subprocess.CalledProcessError as e:
         print()
-        print("❌ Erreur lors de la construction de l'exécutable")
+        print("❌ Erreur lors de la construction de l'application")
         print(f"   Code retour : {e.returncode}")
         if e.stdout:
             print("   Sortie standard :")

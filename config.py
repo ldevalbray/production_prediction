@@ -10,13 +10,26 @@ from typing import Optional
 BASE_DIR = Path(__file__).parent.resolve()
 
 # === FICHIERS ET CHEMINS ===
+# Chemins avec fallback pour compatibilité (cherche d'abord dans data/ et models/, puis à la racine)
+def _get_data_path(filename):
+    """Retourne le chemin d'un fichier de données avec fallback."""
+    data_path = BASE_DIR / "data" / filename
+    root_path = BASE_DIR / filename
+    return str(data_path if data_path.exists() else root_path)
+
+def _get_model_path(filename):
+    """Retourne le chemin d'un modèle avec fallback."""
+    model_path = BASE_DIR / "models" / filename
+    root_path = BASE_DIR / filename
+    return str(model_path if model_path.exists() else root_path)
+
 DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "recoltes.db"))
-EXCEL_PATH = os.getenv("EXCEL_PATH", str(BASE_DIR / "recoltes_fraises.xlsx"))
-MODEL_PATH = os.getenv("MODEL_PATH", str(BASE_DIR / "model_fraises_v2.pkl"))
-WEATHER_PATH = os.getenv("WEATHER_PATH", str(BASE_DIR / "meteo_dataset.csv"))
+EXCEL_PATH = os.getenv("EXCEL_PATH", _get_data_path("recoltes_fraises.xlsx"))
+MODEL_PATH = os.getenv("MODEL_PATH", _get_model_path("model_fraises_v2.pkl"))
+WEATHER_PATH = os.getenv("WEATHER_PATH", _get_data_path("meteo_dataset.csv"))
 DATASET_PATH = os.getenv("DATASET_PATH", str(BASE_DIR / "dataset_ready_for_model.csv"))
 FORECASTS_DIR = Path(os.getenv("FORECASTS_DIR", str(BASE_DIR / "forecasts")))
-ARCHIVE_DIR = Path(os.getenv("ARCHIVE_DIR", str(BASE_DIR / "models_archive")))
+ARCHIVE_DIR = Path(os.getenv("ARCHIVE_DIR", str(BASE_DIR / "models" / "models_archive")))
 LAST_RUN_FILE = os.getenv("LAST_RUN_FILE", str(BASE_DIR / "last_runs.json"))
 
 # === COORDONNÉES GPS ===

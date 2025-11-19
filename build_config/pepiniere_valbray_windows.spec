@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Fichier de configuration PyInstaller pour l'application Pépinière Valbray.
-Utilisez ce fichier pour personnaliser la construction de l'exécutable.
+Fichier de configuration PyInstaller pour Windows - Application Pépinière Valbray.
+Utilisez ce fichier pour construire l'exécutable Windows.
 
 IMPORTANT: Avant de générer l'exécutable, compilez le frontend React:
     cd frontend
@@ -9,6 +9,7 @@ IMPORTANT: Avant de générer l'exécutable, compilez le frontend React:
 """
 
 import os
+import sys
 from pathlib import Path
 
 block_cipher = None
@@ -23,24 +24,24 @@ if not frontend_build.exists() or not (frontend_build / 'index.html').exists():
 # Scripts Python à inclure
 scripts = [
     'app.py',  # Point d'entrée principal (serveur Flask)
-    'run_daily_cycle.py',
-    'forecast_next3days_v3.py',
-    'auto_update_model_v4.py',
-    'train_model.py',
+    'scripts/run_daily_cycle.py',
+    'scripts/forecast_next3days_v3.py',
+    'scripts/auto_update_model_v4.py',
+    'scripts/train_model.py',
 ]
 
 # Fichiers de données à inclure
 datas = [
-    # Fichiers de données essentiels
-    ('recoltes_fraises.xlsx', '.'),
-    ('meteo_dataset.csv', '.'),
+    # Fichiers de données essentiels (depuis data/)
+    ('data/recoltes_fraises.xlsx', '.'),
+    ('data/meteo_dataset.csv', '.'),
     ('assets/splash.png', 'assets'),
-    # Scripts Python appelés dynamiquement
-    ('run_daily_cycle.py', '.'),
-    ('forecast_next3days_v3.py', '.'),
-    ('auto_update_model_v4.py', '.'),
-    ('train_model.py', '.'),
-    ('update_meteo_dataset.py', '.'),
+    # Scripts Python appelés dynamiquement (depuis scripts/)
+    ('scripts/run_daily_cycle.py', '.'),
+    ('scripts/forecast_next3days_v3.py', '.'),
+    ('scripts/auto_update_model_v4.py', '.'),
+    ('scripts/train_model.py', '.'),
+    ('scripts/update_meteo_dataset.py', '.'),
     # Modules Python nécessaires
     ('database.py', '.'),
     ('data_loader.py', '.'),
@@ -54,8 +55,8 @@ datas = [
 optional_files = [
     # Base de données SQLite (créée au runtime si absente)
     ('recoltes.db', '.'),
-    # Modèle ML (peut être généré au runtime)
-    ('model_fraises_v2.pkl', '.'),
+    # Modèle ML (peut être généré au runtime) - depuis models/
+    ('models/model_fraises_v2.pkl', '.'),
     # Modules optionnels
     ('cache_utils.py', '.'),
     ('config.py', '.'),
@@ -141,8 +142,7 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-# Mode --onedir (recommandé, plus rapide et plus fiable)
-# Pour utiliser --onefile, décommentez la section EXE ci-dessous et commentez COLLECT
+# Mode --onedir pour Windows (recommandé)
 exe = EXE(
     pyz,
     a.scripts,
@@ -152,14 +152,14 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,  # Désactivé pour éviter les problèmes avec lipo
+    upx=False,
     console=False,  # Mode fenêtré pour masquer la console
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Vous pouvez ajouter un fichier .ico ici pour Windows ou .icns pour macOS
+    icon=None,  # Ajoutez un fichier .ico ici si vous en avez un
     splash='assets/splash.png',
 )
 
@@ -169,39 +169,8 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=False,  # Désactivé pour éviter les problèmes avec lipo
+    upx=False,
     upx_exclude=[],
     name='PepiniereValbray',
 )
-
-app = BUNDLE(
-    coll,
-    name='PepiniereValbray.app',
-    icon=None,
-    bundle_identifier='com.pepiniere.valbray',
-)
-
-# Pour utiliser --onefile, décommentez ceci et commentez la section COLLECT ci-dessus
-# exe = EXE(
-#     pyz,
-#     a.scripts,
-#     a.binaries,
-#     a.zipfiles,
-#     a.datas,
-#     [],
-#     name='PepiniereValbray',
-#     debug=False,
-#     bootloader_ignore_signals=False,
-#     strip=False,
-#     upx=True,
-#     upx_exclude=[],
-#     runtime_tmpdir=None,
-#     console=False,
-#     disable_windowed_traceback=False,
-#     argv_emulation=False,
-#     target_arch=None,
-#     codesign_identity=None,
-#     entitlements_file=None,
-#     icon=None,
-# )
 

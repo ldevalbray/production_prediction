@@ -5,12 +5,25 @@ Migre toutes les données de recoltes_fraises.xlsx vers la base de données SQLi
 import pandas as pd
 from pathlib import Path
 import sys
+import os
+
+# Ajouter le répertoire parent au path pour les imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from database import (
     init_database, add_parametre, add_recolte, set_jour_courant,
     set_plants_par_annee, set_recolte_quotidienne
 )
 
-EXCEL_PATH = "recoltes_fraises.xlsx"
+# Utiliser config.py si disponible, sinon fallback
+try:
+    from config import EXCEL_PATH
+except ImportError:
+    # Fallback: chercher dans data/ puis à la racine
+    BASE_DIR = Path(__file__).parent.parent.resolve()
+    data_path = BASE_DIR / "data" / "recoltes_fraises.xlsx"
+    root_path = BASE_DIR / "recoltes_fraises.xlsx"
+    EXCEL_PATH = str(data_path if data_path.exists() else root_path)
 
 def migrate_excel_to_db():
     """Migre toutes les données depuis Excel vers SQLite."""

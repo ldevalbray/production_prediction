@@ -6,12 +6,26 @@ from sklearn.metrics import mean_squared_error, r2_score
 import joblib
 from datetime import datetime
 import os
+import sys
+from pathlib import Path
 from math import sqrt
 
+# Ajouter le répertoire parent au path pour les imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # === PARAMÈTRES ===
-DATASET_PATH = "dataset_ready_for_model.csv"
-MODEL_OUTPUT = "model_fraises_v2.pkl"
+# Utiliser config.py si disponible, sinon fallback
+try:
+    from config import DATASET_PATH as DATASET_PATH_CONFIG, MODEL_PATH
+    DATASET_PATH = DATASET_PATH_CONFIG
+    MODEL_OUTPUT = MODEL_PATH
+except ImportError:
+    # Fallback: chercher dans les bons dossiers
+    BASE_DIR = Path(__file__).parent.parent.resolve()
+    DATASET_PATH = str(BASE_DIR / "dataset_ready_for_model.csv")
+    model_path = BASE_DIR / "models" / "model_fraises_v2.pkl"
+    root_path = BASE_DIR / "model_fraises_v2.pkl"
+    MODEL_OUTPUT = str(model_path if model_path.parent.exists() else root_path)
 
 print("🌱 Entraînement du modèle de prédiction de récolte...")
 
