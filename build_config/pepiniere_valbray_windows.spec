@@ -162,7 +162,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Ajoutez un fichier .ico ici si vous en avez un
+    icon=str(base_dir / 'assets' / 'icon.ico') if (base_dir / 'assets' / 'icon.ico').exists() else None,
     splash=str(base_dir / 'assets' / 'splash.png'),
 )
 

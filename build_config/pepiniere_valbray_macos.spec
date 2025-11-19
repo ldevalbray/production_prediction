@@ -161,7 +161,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Ajoutez un fichier .icns ici si vous en avez un
+    icon=str(base_dir / 'assets' / 'icon.icns') if (base_dir / 'assets' / 'icon.icns').exists() else None,
     splash=str(base_dir / 'assets' / 'splash.png'),
 )
 
@@ -180,7 +180,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='PepiniereValbray.app',
-    icon=None,
+    icon=str(base_dir / 'assets' / 'icon.icns') if (base_dir / 'assets' / 'icon.icns').exists() else None,
     bundle_identifier='com.pepiniere.valbray',
 )
 
