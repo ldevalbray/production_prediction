@@ -1,9 +1,0 @@
-🌱 Entraînement du modèle de prédiction de récolte...
-✅ Feature 'nb_plants' détectée et ajoutée au modèle.
-✅ Feature 'jour_semaine' détectée et ajoutée au modèle.
-✅ Feature 'fraction_fraiseraie' détectée et ajoutée au modèle.
-✅ Feature 'jours_since_last_recolte' détectée et ajoutée au modèle.
-✅ Feature 'jours_since_last_recolte_globale' détectée et ajoutée au modèle.
-✅ Entraînement terminé : RMSE = 5.25 | R² = 0.590
-💾 Modèle sauvegardé sous : model_fraises_v2.pkl
-📦 Modèle archivé : models_archive/model_fraises_v2_2025-11-18.pkl
