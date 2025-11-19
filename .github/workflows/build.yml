@@ -136,6 +136,9 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     
+    permissions:
+      contents: write  # Nécessaire pour créer des releases et des tags
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

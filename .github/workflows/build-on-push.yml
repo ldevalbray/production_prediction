@@ -136,6 +136,9 @@ jobs:
     # Créer une release uniquement pour les pushes sur main/master (pas pour les PR)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     
+    permissions:
+      contents: write  # Nécessaire pour créer des releases et des tags
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
