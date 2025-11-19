@@ -13,11 +13,29 @@ def get_base_path():
     """Retourne le chemin de base de l'application.
     
     Dans un exécutable PyInstaller, retourne le dossier de l'exécutable.
+    Pour macOS .app, retourne le dossier contenant le .app (pas le bundle).
     Sinon, retourne le dossier du script.
     """
     if is_pyinstaller():
         # Dans un exécutable, le chemin de base est le dossier de l'exécutable
-        return Path(sys.executable).parent
+        exe_path = Path(sys.executable)
+        
+        # Pour macOS .app, sys.executable pointe vers Contents/MacOS/executable
+        # On veut le dossier contenant le .app
+        if sys.platform == "darwin" and ".app" in exe_path.as_posix():
+            # Remonter jusqu'au .app
+            app_path = exe_path
+            while app_path.name != "Contents" and app_path.parent != app_path:
+                app_path = app_path.parent
+            if app_path.name == "Contents":
+                # Le dossier de base est le parent de Contents (le .app lui-même)
+                # Mais on veut le dossier contenant le .app pour pouvoir écrire
+                app_bundle = app_path.parent
+                # Retourner le dossier parent du .app (où on peut écrire)
+                return app_bundle.parent
+        
+        # Pour Windows/Linux ou si on n'a pas trouvé le .app
+        return exe_path.parent
     else:
         # En développement, le chemin de base est le dossier du script
         return Path(__file__).parent
