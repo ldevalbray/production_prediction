@@ -129,6 +129,15 @@ jobs:
           path: dist/PepiniereValbray-macOS.dmg
           retention-days: 30
           if-no-files-found: ignore
+      
+      - name: Upload macOS ZIP
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-zip
+          path: dist/PepiniereValbray-macOS.zip
+          retention-days: 30
+          if-no-files-found: ignore
 
   create-release:
     name: Create Release
@@ -148,6 +157,13 @@ jobs:
         with:
           name: windows-zip
           path: ./artifacts
+      
+      - name: Download macOS ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-zip
+          path: ./artifacts
+          if-no-files-found: ignore
       
       - name: Download macOS DMG
         uses: actions/download-artifact@v4

@@ -124,9 +124,16 @@ def get_download_url_for_platform(include_prerelease=True):
             if "windows" in asset["name"].lower() and asset["name"].endswith(".zip"):
                 return asset["browser_download_url"]
     elif platform_name == "darwin":  # macOS
+        # Préférer le ZIP pour macOS (plus facile à extraire)
         for asset in assets:
-            if "macos" in asset["name"].lower() or asset["name"].endswith(".dmg"):
+            if "macos" in asset["name"].lower() and asset["name"].endswith(".zip"):
                 return asset["browser_download_url"]
+        # Fallback : chercher un .app ou .dmg (nécessitera un traitement spécial)
+        for asset in assets:
+            if "macos" in asset["name"].lower() or asset["name"].endswith((".dmg", ".app")):
+                logger.warning(f"Fichier {asset['name']} détecté mais non supporté pour mise à jour automatique. Utilisez un ZIP.")
+                # Ne pas retourner pour forcer l'utilisateur à télécharger manuellement
+                return None
     
     return None
 
@@ -191,7 +198,7 @@ def download_update(download_url: str, progress_callback=None) -> Path:
         response.raise_for_status()
         
         # Déterminer le nom du fichier
-        filename = download_url.split("/")[-1]
+        filename = download_url.split("/")[-1].split("?")[0]  # Enlever les paramètres de requête
         download_path = Path(sys.executable).parent / filename
         
         total_size = int(response.headers.get('content-length', 0))
@@ -208,7 +215,19 @@ def download_update(download_url: str, progress_callback=None) -> Path:
                         progress = (downloaded / total_size) * 100
                         progress_callback(progress)
         
-        logger.info(f"Téléchargement terminé : {download_path}")
+        # Vérifier que le fichier téléchargé est valide
+        if not download_path.exists() or download_path.stat().st_size == 0:
+            raise Exception("Le fichier téléchargé est vide ou n'existe pas")
+        
+        # Vérifier que c'est bien un ZIP (pour macOS et Windows)
+        if download_path.suffix.lower() == '.zip':
+            try:
+                with zipfile.ZipFile(download_path, 'r') as test_zip:
+                    test_zip.testzip()  # Vérifier l'intégrité
+            except zipfile.BadZipFile:
+                raise Exception(f"Le fichier téléchargé n'est pas un ZIP valide : {filename}")
+        
+        logger.info(f"Téléchargement terminé : {download_path} ({download_path.stat().st_size / 1024 / 1024:.1f} MB)")
         return download_path
     except Exception as e:
         raise Exception(f"Erreur lors du téléchargement : {e}")
