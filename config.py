@@ -85,6 +85,8 @@ MAX_KG_TOTAL = float(os.getenv("MAX_KG_TOTAL", "10000"))  # Limite raisonnable
 # (ne pas créer au moment de l'import car le bundle peut être en lecture seule)
 def ensure_directories():
     """Crée les dossiers nécessaires s'ils n'existent pas."""
+    global FORECASTS_DIR, ARCHIVE_DIR
+    
     try:
         FORECASTS_DIR.mkdir(parents=True, exist_ok=True)
     except (OSError, PermissionError) as e:
@@ -92,7 +94,6 @@ def ensure_directories():
         user_forecasts = Path.home() / ".pepiniere_valbray" / "forecasts"
         user_forecasts.mkdir(parents=True, exist_ok=True)
         # Mettre à jour FORECASTS_DIR pour utiliser le chemin utilisateur
-        global FORECASTS_DIR
         FORECASTS_DIR = user_forecasts
     
     try:
@@ -102,6 +103,5 @@ def ensure_directories():
         user_archive = Path.home() / ".pepiniere_valbray" / "models" / "models_archive"
         user_archive.mkdir(parents=True, exist_ok=True)
         # Mettre à jour ARCHIVE_DIR pour utiliser le chemin utilisateur
-        global ARCHIVE_DIR
         ARCHIVE_DIR = user_archive
 
