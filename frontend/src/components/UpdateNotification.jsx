@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -14,14 +14,7 @@ export function UpdateNotification() {
   const [dismissed, setDismissed] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  useEffect(() => {
-    checkForUpdates();
-    // Vérifier toutes les heures
-    const interval = setInterval(checkForUpdates, 60 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const checkForUpdates = async () => {
+  const checkForUpdates = useCallback(async () => {
     setChecking(true);
     setError(null);
     try {
@@ -38,7 +31,14 @@ export function UpdateNotification() {
     } finally {
       setChecking(false);
     }
-  };
+  }, [dismissed]);
+
+  useEffect(() => {
+    checkForUpdates();
+    // Vérifier toutes les heures
+    const interval = setInterval(checkForUpdates, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [checkForUpdates]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -53,7 +53,7 @@ export function UpdateNotification() {
         setInstalling(true);
         // Attendre un peu pour que l'installation se termine
         setTimeout(() => {
-          alert('✅ Mise à jour installée avec succès !\n\nVeuillez redémarrer l\'application pour appliquer les changements.');
+          alert('[SUCCESS] Mise a jour installee avec succes !\n\nVeuillez redemarrer l\'application pour appliquer les changements.');
           setUpdateInfo(null);
           setDownloading(false);
           setInstalling(false);
