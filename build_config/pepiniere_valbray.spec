@@ -15,7 +15,8 @@ block_cipher = None
 
 # Vérifier que le frontend est compilé
 # Les chemins sont relatifs à la racine du projet (où PyInstaller est exécuté)
-base_dir = Path(__file__).parent.parent
+# PyInstaller exécute depuis la racine, donc on utilise le répertoire de travail actuel
+base_dir = Path(os.getcwd())
 frontend_build = base_dir / 'frontend' / 'build'
 if not frontend_build.exists() or not (frontend_build / 'index.html').exists():
     print("[WARNING] ATTENTION: Le frontend React n'est pas compile!")
