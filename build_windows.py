@@ -132,14 +132,18 @@ def build_executable():
     
     try:
         # Exécuter PyInstaller
-        result = subprocess.run(cmd, check=True, capture_output=False)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        
+        # Vérifier que l'exécutable a bien été créé
+        exe_path = Path("dist") / app_name / f"{app_name}.exe"
+        if not exe_path.exists():
+            raise FileNotFoundError(f"L'exécutable n'a pas été créé : {exe_path}")
         
         print()
         print("=" * 60)
         print("✅ Exécutable Windows créé avec succès !")
         print()
         
-        exe_path = Path("dist") / app_name / f"{app_name}.exe"
         print(f"📦 Exécutable Windows : {exe_path}")
         
         print()
@@ -165,11 +169,19 @@ def build_executable():
         print()
         print("❌ Erreur lors de la construction de l'exécutable")
         print(f"   Code retour : {e.returncode}")
-        return False
+        if e.stdout:
+            print("   Sortie standard :")
+            print(e.stdout)
+        if e.stderr:
+            print("   Erreur standard :")
+            print(e.stderr)
+        raise  # Lever l'exception pour que GitHub Actions détecte l'échec
     except Exception as e:
         print()
         print(f"❌ Erreur inattendue : {e}")
-        return False
+        import traceback
+        traceback.print_exc()
+        raise  # Lever l'exception pour que GitHub Actions détecte l'échec
 
 if __name__ == "__main__":
     success = build_executable()

@@ -132,14 +132,18 @@ def build_executable():
     
     try:
         # Exécuter PyInstaller
-        result = subprocess.run(cmd, check=True, capture_output=False)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        
+        # Vérifier que l'application a bien été créée
+        app_path = Path("dist") / f"{app_name}.app"
+        if not app_path.exists():
+            raise FileNotFoundError(f"L'application n'a pas été créée : {app_path}")
         
         print()
         print("=" * 60)
         print("✅ Application macOS créée avec succès !")
         print()
         
-        app_path = Path("dist") / f"{app_name}.app"
         print(f"📦 Application macOS : {app_path}")
         
         print()
@@ -170,11 +174,19 @@ def build_executable():
         print()
         print("❌ Erreur lors de la construction de l'application")
         print(f"   Code retour : {e.returncode}")
-        return False
+        if e.stdout:
+            print("   Sortie standard :")
+            print(e.stdout)
+        if e.stderr:
+            print("   Erreur standard :")
+            print(e.stderr)
+        raise  # Lever l'exception pour que GitHub Actions détecte l'échec
     except Exception as e:
         print()
         print(f"❌ Erreur inattendue : {e}")
-        return False
+        import traceback
+        traceback.print_exc()
+        raise  # Lever l'exception pour que GitHub Actions détecte l'échec
 
 if __name__ == "__main__":
     success = build_executable()
