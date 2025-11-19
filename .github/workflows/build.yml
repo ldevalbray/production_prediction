@@ -121,6 +121,11 @@ jobs:
             -ov -format UDZO \
             dist/PepiniereValbray-macOS.dmg || echo "DMG creation failed, continuing..."
       
+      - name: Create macOS ZIP (for auto-update)
+        run: |
+          cd dist
+          zip -r PepiniereValbray-macOS.zip PepiniereValbray.app || echo "ZIP creation failed, continuing..."
+      
       - name: Upload macOS DMG
         if: success()
         uses: actions/upload-artifact@v4
