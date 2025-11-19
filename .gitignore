@@ -53,10 +53,9 @@ frontend/node_modules/
 frontend/build/  # Le build sera créé par GitHub Actions
 
 # Fichiers de données (générés au runtime ou spécifiques à l'utilisateur)
-# Note: recoltes_fraises.xlsx et recoltes.db sont gardés pour l'historique client
+# Note: recoltes_fraises.xlsx, recoltes.db et meteo_dataset.csv sont gardés pour l'historique client
 model_fraises_v2.pkl
 dataset_ready_for_model.csv
-meteo_dataset.csv
 forecasts/
 models_archive/
 recoltes_export_*.xlsx
