@@ -48,17 +48,23 @@ app.log
 *.db-wal
 *.db-shm
 
-# Frontend (node_modules est déjà dans frontend/.gitignore)
-# Mais on garde le build pour GitHub Actions
-# frontend/build/
+# Frontend
+frontend/node_modules/
+frontend/build/  # Le build sera créé par GitHub Actions
 
-# Fichiers de données temporaires (optionnel - à ajuster selon vos besoins)
-# dataset_ready_for_model.csv
-# forecasts/
-# models_archive/
-
-# Fichiers Excel d'export temporaires
+# Fichiers de données (générés au runtime ou spécifiques à l'utilisateur)
+recoltes_fraises.xlsx
+recoltes.db
+recoltes.db-journal
+recoltes.db-wal
+recoltes.db-shm
+model_fraises_v2.pkl
+dataset_ready_for_model.csv
+meteo_dataset.csv
+forecasts/
+models_archive/
 recoltes_export_*.xlsx
+last_runs.json
 
 # Fichiers de configuration locale
 .env
