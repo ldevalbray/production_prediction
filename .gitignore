@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+app.log
+
+# Database
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Frontend (node_modules est déjà dans frontend/.gitignore)
+# Mais on garde le build pour GitHub Actions
+# frontend/build/
+
+# Fichiers de données temporaires (optionnel - à ajuster selon vos besoins)
+# dataset_ready_for_model.csv
+# forecasts/
+# models_archive/
+
+# Fichiers Excel d'export temporaires
+recoltes_export_*.xlsx
+
+# Fichiers de configuration locale
+.env
+.env.local
+config.local.py
+
+# Fichiers système
+Thumbs.db
+.DS_Store
+

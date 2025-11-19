@@ -1,0 +1,198 @@
+name: Build Executables
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Exemple: v1.0.0, v1.2.3
+  workflow_dispatch:  # Permet de déclencher manuellement depuis l'interface GitHub
+    inputs:
+      version:
+        description: 'Version (ex: 1.0.0)'
+        required: false
+        default: 'dev'
+
+jobs:
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+      
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+      
+      - name: Build Windows executable
+        run: python build_windows.py
+      
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-executable
+          path: dist/PepiniereValbray/
+          retention-days: 30
+      
+      - name: Create Windows ZIP archive
+        run: |
+          cd dist
+          Compress-Archive -Path PepiniereValbray -DestinationPath PepiniereValbray-Windows.zip -Force
+      
+      - name: Upload Windows ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: dist/PepiniereValbray-Windows.zip
+          retention-days: 30
+
+  build-macos:
+    name: Build macOS Application
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+      
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+      
+      - name: Build macOS application
+        run: python build_macos.py
+      
+      - name: Upload macOS application
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-application
+          path: dist/PepiniereValbray.app
+          retention-days: 30
+      
+      - name: Create macOS DMG (optional)
+        run: |
+          # Créer un DMG pour faciliter la distribution
+          hdiutil create -volname "PepiniereValbray" \
+            -srcfolder dist/PepiniereValbray.app \
+            -ov -format UDZO \
+            dist/PepiniereValbray-macOS.dmg || echo "DMG creation failed, continuing..."
+      
+      - name: Upload macOS DMG
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/PepiniereValbray-macOS.dmg
+          retention-days: 30
+          if-no-files-found: ignore
+
+  create-release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download Windows ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-zip
+          path: ./artifacts
+      
+      - name: Download macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: ./artifacts
+          if-no-files-found: ignore
+      
+      - name: Download macOS App (fallback)
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-application
+          path: ./artifacts
+          if-no-files-found: ignore
+      
+      - name: Extract version from tag
+        id: tag_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/*.zip
+            artifacts/*.dmg
+            artifacts/*.app
+          name: Release v${{ steps.tag_version.outputs.VERSION }}
+          body: |
+            ## Pépinière Valbray v${{ steps.tag_version.outputs.VERSION }}
+            
+            ### Téléchargements
+            
+            - **Windows** : Téléchargez `PepiniereValbray-Windows.zip`, extrayez-le et lancez `PepiniereValbray.exe`
+            - **macOS** : Téléchargez `PepiniereValbray-macOS.dmg` ou `PepiniereValbray.app`
+            
+            ### Installation
+            
+            1. Téléchargez le fichier correspondant à votre système
+            2. Extrayez/Installez l'application
+            3. Lancez l'application
+            4. L'interface web s'ouvrira automatiquement dans votre navigateur
+            
+            ### Notes
+            
+            - Aucune installation de Python n'est nécessaire
+            - L'application démarre un serveur web local sur http://127.0.0.1:5000
+            - Les données sont stockées localement dans le dossier de l'application
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

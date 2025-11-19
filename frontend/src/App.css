@@ -1,0 +1,98 @@
+/* Styles optimisés pour une UI moderne et performante */
+
+/* Scrollbar personnalisée - légère et discrète */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* Focus states améliorés */
+*:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Transitions globales optimisées */
+* {
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Amélioration des tableaux */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+table tbody tr:hover {
+  background-color: hsl(var(--muted) / 0.5);
+}
+
+/* États vides élégants */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+}
+
+.empty-state-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: hsl(var(--muted));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+/* Amélioration de la lisibilité */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Optimisation des performances */
+.will-change-transform {
+  will-change: transform;
+}
+
+.will-change-opacity {
+  will-change: opacity;
+}
+
+/* Micro-interactions subtiles */
+.interactive {
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.interactive:hover {
+  opacity: 0.8;
+}
+
+.interactive:active {
+  opacity: 0.6;
+}
