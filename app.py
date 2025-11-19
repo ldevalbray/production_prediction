@@ -1319,6 +1319,17 @@ if __name__ == '__main__':
     
     threading.Thread(target=delayed_splash_close, daemon=True).start()
     
+    # Initialiser la base de données au démarrage
+    if DB_AVAILABLE:
+        try:
+            init_database()
+            logger.info("Base de données initialisée avec succès")
+            if splash_is_active():
+                splash_update("Base de données initialisée...")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de la base de données : {e}", exc_info=True)
+            # Continuer quand même, l'utilisateur pourra initialiser manuellement via /api/db/init
+    
     try:
         app.run(debug=not is_pyinstaller(), port=SERVER_PORT, host=SERVER_HOST, use_reloader=False)
     except KeyboardInterrupt:
