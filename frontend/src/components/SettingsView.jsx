@@ -5,7 +5,6 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Settings, Sprout, Trash2, Plus, Save, X, Edit2, Calendar, ChevronDown } from 'lucide-react';
 

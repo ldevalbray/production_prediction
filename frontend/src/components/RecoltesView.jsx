@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Badge } from './ui/badge';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Separator } from './ui/separator';
 import { Plus, Edit2, Trash2, Moon, TrendingUp, Package, Calendar, BarChart3, Filter, X, Download } from 'lucide-react';
 import DataEntryModal from './DataEntryModal';
 
