@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Optional
 
 # Chemin de base de l'application
-BASE_DIR = Path(__file__).parent.resolve()
+# Utiliser pyinstaller_utils pour obtenir le bon chemin dans un exécutable
+try:
+    from pyinstaller_utils import get_base_path
+    BASE_DIR = get_base_path()
+except ImportError:
+    # Fallback si pyinstaller_utils n'est pas disponible
+    BASE_DIR = Path(__file__).parent.resolve()
 
 # === FICHIERS ET CHEMINS ===
 # Chemins avec fallback pour compatibilité (cherche d'abord dans data/ et models/, puis à la racine)
@@ -75,7 +81,27 @@ MAX_COMMENT_LENGTH = int(os.getenv("MAX_COMMENT_LENGTH", "500"))
 MIN_KG_TOTAL = float(os.getenv("MIN_KG_TOTAL", "0"))
 MAX_KG_TOTAL = float(os.getenv("MAX_KG_TOTAL", "10000"))  # Limite raisonnable
 
-# Créer les dossiers nécessaires
-FORECASTS_DIR.mkdir(exist_ok=True)
-ARCHIVE_DIR.mkdir(exist_ok=True)
+# Fonction pour créer les dossiers nécessaires au runtime
+# (ne pas créer au moment de l'import car le bundle peut être en lecture seule)
+def ensure_directories():
+    """Crée les dossiers nécessaires s'ils n'existent pas."""
+    try:
+        FORECASTS_DIR.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        # Si on ne peut pas créer dans BASE_DIR, essayer dans le dossier utilisateur
+        user_forecasts = Path.home() / ".pepiniere_valbray" / "forecasts"
+        user_forecasts.mkdir(parents=True, exist_ok=True)
+        # Mettre à jour FORECASTS_DIR pour utiliser le chemin utilisateur
+        global FORECASTS_DIR
+        FORECASTS_DIR = user_forecasts
+    
+    try:
+        ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        # Si on ne peut pas créer dans BASE_DIR, essayer dans le dossier utilisateur
+        user_archive = Path.home() / ".pepiniere_valbray" / "models" / "models_archive"
+        user_archive.mkdir(parents=True, exist_ok=True)
+        # Mettre à jour ARCHIVE_DIR pour utiliser le chemin utilisateur
+        global ARCHIVE_DIR
+        ARCHIVE_DIR = user_archive
 

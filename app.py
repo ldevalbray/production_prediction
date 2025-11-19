@@ -147,7 +147,9 @@ app = Flask(__name__, static_folder=str(frontend_path), static_url_path='')
 
 # Configuration CORS
 try:
-    from config import CORS_ORIGINS
+    from config import CORS_ORIGINS, ensure_directories
+    # Créer les dossiers nécessaires au démarrage (après l'import de config)
+    ensure_directories()
     if CORS_ORIGINS == ["*"]:
         CORS(app)
     else:
