@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
-import { Plus, Trash2, Edit2, Save, X, Download, Package, Settings, Sprout, Sun } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Download, Package, Settings, Sprout, Sun, Upload } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -21,6 +21,8 @@ function DataEntry() {
   const [editingPlantsId, setEditingPlantsId] = useState(null);
   const [editingJourId, setEditingJourId] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = React.useRef(null);
   const [importing, setImporting] = useState(false);
   const [fileInputRef, setFileInputRef] = useState(null);
   
@@ -302,13 +304,66 @@ function DataEntry() {
     }
   };
 
+  const handleImportExcel = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      alert('Veuillez sélectionner un fichier Excel (.xlsx ou .xls)');
+      return;
+    }
+    
+    if (!confirm('Voulez-vous vraiment importer ces données ? Les données existantes seront complétées (pas remplacées).')) {
+      return;
+    }
+    
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await axios.post(`${API_BASE}/db/upload-excel`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      alert(response.data.message || 'Données importées avec succès !');
+      // Recharger les données
+      loadData();
+      loadParametres();
+    } catch (error) {
+      console.error('Erreur lors de l\'import:', error);
+      alert(error.response?.data?.error || 'Erreur lors de l\'import des données');
+    } finally {
+      setImporting(false);
+      // Réinitialiser l'input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
-      const response = await axios.post(`${API_BASE}/export-excel`, {
-        output_path: `recoltes_export_${new Date().toISOString().split('T')[0]}.xlsx`
+      // Exporter vers Excel (template avec données actuelles)
+      const response = await fetch(`${API_BASE}/db/export-template`, {
+        method: 'GET'
       });
-      alert(`Export réussi ! Fichier : ${response.data.path}`);
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'export');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `recoltes_fraises_template_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      alert('Template Excel exporté avec succès !');
     } catch (error) {
       console.error('Erreur:', error);
       alert('Erreur lors de l\'export');
@@ -355,14 +410,31 @@ function DataEntry() {
             Jour courant
           </Button>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleExport}
-          disabled={exporting}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          {exporting ? 'Export en cours...' : 'Télécharger le template Excel'}
-        </Button>
+        <div className="flex gap-2">
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            ref={fileInputRef}
+            onChange={handleImportExcel}
+            style={{ display: 'none' }}
+          />
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {importing ? 'Import...' : 'Importer Excel'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {exporting ? 'Export...' : 'Télécharger template'}
+          </Button>
+        </div>
       </div>
 
       {/* Formulaire et liste des récoltes */}
