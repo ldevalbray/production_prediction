@@ -35,7 +35,6 @@ scripts = [
 # Fichiers de données à inclure (chemins relatifs à la racine du projet)
 datas = [
     # Fichiers de données essentiels (depuis data/)
-    (str(base_dir / 'data' / 'recoltes_fraises.xlsx'), '.'),
     (str(base_dir / 'data' / 'meteo_dataset.csv'), '.'),
     (str(base_dir / 'assets' / 'splash.png'), 'assets'),
     # Scripts Python appelés dynamiquement (depuis scripts/)
@@ -55,6 +54,8 @@ datas = [
 
 # Ajouter les fichiers optionnels s'ils existent
 optional_files = [
+    # Fichiers Excel fournis par l'utilisateur (peuvent être absents dans l'environnement CI)
+    (base_dir / 'data' / 'recoltes_fraises.xlsx', '.'),
     # Base de données SQLite (créée au runtime si absente)
     (base_dir / 'recoltes.db', '.'),
     # Modèle ML (peut être généré au runtime) - depuis models/
