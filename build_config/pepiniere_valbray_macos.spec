@@ -59,8 +59,7 @@ optional_files = [
     (base_dir / 'recoltes.db', '.'),
     # Modèle ML (peut être généré au runtime) - depuis models/
     (base_dir / 'models' / 'model_fraises_v2.pkl', '.'),
-    # Template Excel (pour import de données)
-    (base_dir / 'data' / 'recoltes_fraises_template.xlsx', 'data'),
+    # Template Excel créé au runtime si nécessaire (ne pas inclure dans le build)
     # Modules optionnels
     (base_dir / 'cache_utils.py', '.'),
     (base_dir / 'config.py', '.'),
