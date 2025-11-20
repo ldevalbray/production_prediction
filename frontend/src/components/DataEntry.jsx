@@ -23,8 +23,6 @@ function DataEntry() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = React.useRef(null);
-  const [importing, setImporting] = useState(false);
-  const [fileInputRef, setFileInputRef] = useState(null);
   
   // Formulaire de récolte
   const [recolteForm, setRecolteForm] = useState({
