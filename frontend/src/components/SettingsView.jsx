@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { Button } from './ui/button';
@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Settings, Sprout, Trash2, Plus, Save, X, Edit2, Calendar, ChevronDown } from 'lucide-react';
+import { Settings, Sprout, Trash2, Plus, Save, X, Edit2, Calendar, ChevronDown, Upload, Download } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -22,10 +22,13 @@ function SettingsView() {
   const [plantsParAnnee, setPlantsParAnnee] = useState([]);
   const [recolteQuotidienne, setRecolteQuotidienne] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [editingParamId, setEditingParamId] = useState(null);
   const [editingPlantsId, setEditingPlantsId] = useState(null);
   const [editingRecolteQuotidienneId, setEditingRecolteQuotidienneId] = useState(null);
   const [varieties, setVarieties] = useState([]);
+  const fileInputRef = useRef(null);
 
   // Formulaires
   const [parametreForm, setParametreForm] = useState({
@@ -289,15 +292,109 @@ function SettingsView() {
     }
   };
 
+  const handleImportExcel = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      alert('Veuillez sélectionner un fichier Excel (.xlsx ou .xls)');
+      return;
+    }
+
+    if (!window.confirm('Voulez-vous vraiment importer ces données ? Les données existantes seront complétées (pas remplacées).')) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post(`${API_BASE}/db/upload-excel`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      alert(response.data.message || 'Données importées avec succès !');
+      await loadParametres();
+      await loadPlants();
+      await loadRecolteQuotidienne();
+    } catch (error) {
+      console.error('Erreur lors de l\'import Excel:', error);
+      alert(error.response?.data?.error || 'Erreur lors de l\'import des données');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const response = await fetch(`${API_BASE}/db/export-template`, {
+        method: 'GET'
+      });
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'export');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `recoltes_fraises_template_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(anchor);
+      alert('Template Excel exporté avec succès !');
+    } catch (error) {
+      console.error('Erreur lors de l\'export Excel:', error);
+      alert('Erreur lors de l\'export');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* En-tête */}
-      <motion.div {...fadeIn} className="flex items-center justify-between">
+      <motion.div {...fadeIn} className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-2xl font-semibold">Paramètres</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Gérez les paramètres de l'application
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={handleImportExcel}
+          />
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {importing ? 'Import en cours...' : 'Importer Excel'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExportExcel}
+            disabled={exporting}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {exporting ? 'Export en cours...' : 'Exporter template'}
+          </Button>
         </div>
       </motion.div>
 
