@@ -589,7 +589,42 @@ function DataEntry() {
 
       {/* Formulaire et liste des paramètres */}
       {activeTab === 'parametres' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          {/* En-tête avec titre et boutons */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold">Paramètres</h2>
+              <p className="text-sm text-muted-foreground mt-1">Gérez les paramètres de l'application</p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                ref={fileInputRef}
+                onChange={handleImportExcel}
+                style={{ display: 'none' }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {importing ? 'Import...' : 'Importer Excel'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={exporting}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {exporting ? 'Export...' : 'Télécharger template'}
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Formulaire */}
           <Card>
             <CardHeader>
@@ -647,33 +682,6 @@ function DataEntry() {
             <CardHeader>
               <CardTitle>Paramètres configurés</CardTitle>
               <CardDescription>Parcelles et variétés</CardDescription>
-              <div className="flex gap-2 mt-4">
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  ref={fileInputRef}
-                  onChange={handleImportExcel}
-                  style={{ display: 'none' }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={importing}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  {importing ? 'Import...' : 'Importer Excel'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExport}
-                  disabled={exporting}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  {exporting ? 'Export...' : 'Télécharger template'}
-                </Button>
-              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
