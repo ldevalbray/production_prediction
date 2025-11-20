@@ -410,31 +410,14 @@ function DataEntry() {
             Jour courant
           </Button>
         </div>
-        <div className="flex gap-2">
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            ref={fileInputRef}
-            onChange={handleImportExcel}
-            style={{ display: 'none' }}
-          />
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            {importing ? 'Import...' : 'Importer Excel'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleExport}
-            disabled={exporting}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {exporting ? 'Export...' : 'Télécharger template'}
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          onClick={handleExport}
+          disabled={exporting}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          {exporting ? 'Export en cours...' : 'Exporter vers Excel'}
+        </Button>
       </div>
 
       {/* Formulaire et liste des récoltes */}
@@ -666,6 +649,33 @@ function DataEntry() {
             <CardHeader>
               <CardTitle>Paramètres configurés</CardTitle>
               <CardDescription>Parcelles et variétés</CardDescription>
+              <div className="flex gap-2 mt-4">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  ref={fileInputRef}
+                  onChange={handleImportExcel}
+                  style={{ display: 'none' }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  {importing ? 'Import...' : 'Importer Excel'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExport}
+                  disabled={exporting}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  {exporting ? 'Export...' : 'Télécharger template'}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
