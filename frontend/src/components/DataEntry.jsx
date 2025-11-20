@@ -21,6 +21,8 @@ function DataEntry() {
   const [editingPlantsId, setEditingPlantsId] = useState(null);
   const [editingJourId, setEditingJourId] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [fileInputRef, setFileInputRef] = useState(null);
   
   // Formulaire de récolte
   const [recolteForm, setRecolteForm] = useState({
@@ -359,7 +361,7 @@ function DataEntry() {
           disabled={exporting}
         >
           <Download className="mr-2 h-4 w-4" />
-          {exporting ? 'Export en cours...' : 'Exporter vers Excel'}
+          {exporting ? 'Export en cours...' : 'Télécharger le template Excel'}
         </Button>
       </div>
 

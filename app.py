@@ -692,6 +692,105 @@ def init_db():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/db/import', methods=['POST'])
+def import_from_excel():
+    """Importe les données depuis le fichier Excel vers la base de données."""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Base de données non disponible"}), 503
+    try:
+        from scripts.migrate_excel_to_db import migrate_excel_to_db
+        success = migrate_excel_to_db()
+        if success:
+            return jsonify({"message": "Données importées depuis Excel avec succès"})
+        else:
+            return jsonify({"error": "Échec de l'importation des données"}), 500
+    except FileNotFoundError as e:
+        return jsonify({"error": f"Fichier Excel introuvable : {e}"}), 404
+    except Exception as e:
+        logger.error(f"Erreur lors de l'importation depuis Excel : {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/db/export-template', methods=['GET', 'POST'])
+def export_template():
+    """Exporte les données de la base vers un fichier Excel (template)."""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Base de données non disponible"}), 503
+    try:
+        from database import export_to_excel
+        from pyinstaller_utils import get_base_path
+        
+        # Créer le fichier dans le dossier de l'application
+        app_dir = get_base_path()
+        output_path = app_dir / "recoltes_fraises_template.xlsx"
+        
+        # Exporter les données actuelles (ou créer un template vide si la base est vide)
+        export_to_excel(str(output_path))
+        
+        # Retourner le fichier pour téléchargement
+        return send_from_directory(
+            str(app_dir),
+            "recoltes_fraises_template.xlsx",
+            as_attachment=True,
+            download_name="recoltes_fraises_template.xlsx"
+        )
+    except Exception as e:
+        logger.error(f"Erreur lors de l'export du template : {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/db/upload-excel', methods=['POST'])
+def upload_excel():
+    """Télécharge un fichier Excel et l'importe dans la base de données."""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Base de données non disponible"}), 503
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "Aucun fichier fourni"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "Aucun fichier sélectionné"}), 400
+        
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            return jsonify({"error": "Le fichier doit être un fichier Excel (.xlsx ou .xls)"}), 400
+        
+        # Sauvegarder temporairement le fichier
+        from pyinstaller_utils import get_base_path
+        import tempfile
+        
+        app_dir = get_base_path()
+        temp_dir = app_dir / "temp_imports"
+        temp_dir.mkdir(exist_ok=True)
+        
+        temp_path = temp_dir / file.filename
+        file.save(str(temp_path))
+        
+        # Mettre à jour EXCEL_PATH temporairement pour la migration
+        import os
+        old_excel_path = os.environ.get('EXCEL_PATH')
+        os.environ['EXCEL_PATH'] = str(temp_path)
+        
+        try:
+            from scripts.migrate_excel_to_db import migrate_excel_to_db
+            success = migrate_excel_to_db()
+            
+            # Nettoyer le fichier temporaire
+            temp_path.unlink()
+            
+            if success:
+                return jsonify({"message": "Données importées depuis Excel avec succès"})
+            else:
+                return jsonify({"error": "Échec de l'importation des données"}), 500
+        finally:
+            # Restaurer l'ancien EXCEL_PATH
+            if old_excel_path:
+                os.environ['EXCEL_PATH'] = old_excel_path
+            elif 'EXCEL_PATH' in os.environ:
+                del os.environ['EXCEL_PATH']
+                
+    except Exception as e:
+        logger.error(f"Erreur lors de l'upload et import Excel : {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 # --- PARAMETRES ---
 @app.route('/api/parametres', methods=['GET'])
 def api_get_parametres():
@@ -1326,6 +1425,28 @@ if __name__ == '__main__':
             logger.info("Base de données initialisée avec succès")
             if splash_is_active():
                 splash_update("Base de données initialisée...")
+            
+            # Vérifier si la base est vide et importer depuis Excel si disponible
+            try:
+                from database import get_parametres
+                from config import EXCEL_PATH
+                
+                # Vérifier si la base est vide (pas de paramètres)
+                params_df = get_parametres()
+                if params_df.empty and Path(EXCEL_PATH).exists():
+                    logger.info("Base de données vide, tentative d'import depuis Excel...")
+                    if splash_is_active():
+                        splash_update("Import des données depuis Excel...")
+                    
+                    from scripts.migrate_excel_to_db import migrate_excel_to_db
+                    if migrate_excel_to_db():
+                        logger.info("Données importées depuis Excel avec succès")
+                    else:
+                        logger.warning("Échec de l'importation depuis Excel")
+            except Exception as e:
+                logger.debug(f"Import automatique depuis Excel non disponible : {e}")
+                # Ne pas bloquer le démarrage si l'import échoue
+                
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation de la base de données : {e}", exc_info=True)
             # Continuer quand même, l'utilisateur pourra initialiser manuellement via /api/db/init
