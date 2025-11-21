@@ -165,7 +165,7 @@ jobs:
           name: macos-dmg
           path: dist/PepiniereValbray-macOS.dmg
           retention-days: 30
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Upload macOS ZIP
         if: success()
@@ -174,7 +174,7 @@ jobs:
           name: macos-zip
           path: dist/PepiniereValbray-macOS.zip
           retention-days: 30
-          if-no-files-found: ignore
+        continue-on-error: true
 
   create-release:
     name: Create Release
@@ -200,21 +200,21 @@ jobs:
         with:
           name: macos-zip
           path: ./artifacts
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Download macOS DMG
         uses: actions/download-artifact@v4
         with:
           name: macos-dmg
           path: ./artifacts
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Download macOS App (fallback)
         uses: actions/download-artifact@v4
         with:
           name: macos-application
           path: ./artifacts
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Extract version from tag
         id: tag_version
@@ -227,6 +227,7 @@ jobs:
             artifacts/*.zip
             artifacts/*.dmg
             artifacts/*.app
+          fail_on_unmatched_files: false
           name: Release v${{ steps.tag_version.outputs.VERSION }}
           body: |
             ## Pépinière Valbray v${{ steps.tag_version.outputs.VERSION }}

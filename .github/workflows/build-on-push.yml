@@ -164,7 +164,7 @@ jobs:
           name: macos-dmg-${{ github.sha }}
           path: dist/PepiniereValbray-macOS.dmg
           retention-days: 7
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Upload macOS ZIP
         if: success()
@@ -173,7 +173,7 @@ jobs:
           name: macos-zip-${{ github.sha }}
           path: dist/PepiniereValbray-macOS.zip
           retention-days: 7
-          if-no-files-found: ignore
+        continue-on-error: true
 
   create-release:
     name: Create Release
@@ -200,21 +200,21 @@ jobs:
         with:
           name: macos-zip-${{ github.sha }}
           path: ./artifacts
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Download macOS DMG
         uses: actions/download-artifact@v4
         with:
           name: macos-dmg-${{ github.sha }}
           path: ./artifacts
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Download macOS App (fallback)
         uses: actions/download-artifact@v4
         with:
           name: macos-application-${{ github.sha }}
           path: ./artifacts
-          if-no-files-found: ignore
+        continue-on-error: true
       
       - name: Generate version from commit
         id: version
@@ -241,6 +241,7 @@ jobs:
             artifacts/*.zip
             artifacts/*.dmg
             artifacts/*.app
+          fail_on_unmatched_files: false
           tag_name: "v${{ steps.version.outputs.VERSION }}"
           name: "Release ${{ steps.version.outputs.VERSION }}"
           body: |
