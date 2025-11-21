@@ -1338,10 +1338,26 @@ def cleanup_resources():
 def api_check_updates():
     """Vérifie les mises à jour disponibles."""
     try:
-        from auto_updater import check_for_updates
+        from auto_updater import check_for_updates, get_current_version
         # Inclure les prereleases pour détecter les builds automatiques
         include_prerelease = request.args.get('include_prerelease', 'true').lower() == 'true'
+        
+        # Récupérer la version actuelle pour le débogage
+        current_version = get_current_version()
+        
+        # Vérifier les mises à jour
         update_info = check_for_updates(include_prerelease=include_prerelease)
+        
+        # Ajouter des informations de débogage
+        update_info['debug'] = {
+            'current_version': current_version,
+            'include_prerelease': include_prerelease,
+            'github_repo': 'ldevalbray/production_prediction'
+        }
+        
+        logger.info(f"Vérification des mises à jour : disponible={update_info.get('available', False)}, "
+                   f"actuelle={current_version}, dernière={update_info.get('latest_version', 'N/A')}")
+        
         return jsonify(update_info)
     except Exception as e:
         logger.error(f"Erreur lors de la vérification des mises à jour : {e}", exc_info=True)

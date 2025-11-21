@@ -51,21 +51,38 @@ def get_current_version():
     Essaie de lire depuis le fichier installed_version.txt, sinon utilise la version par défaut.
     """
     from pyinstaller_utils import get_base_path
+    import sys
     
     # Essayer de lire depuis le fichier de version installée
     try:
         base_path = get_base_path()
-        version_file = base_path / VERSION_FILE
+        
+        # Pour macOS .app, chercher dans le dossier de données
+        version_file = None
+        if sys.platform == "darwin" and (base_path.suffix == ".app" or (base_path / "Contents").exists()):
+            # Chercher dans le dossier de données utilisateur
+            data_dir = get_user_data_dir(base_path)
+            version_file = data_dir / VERSION_FILE
+            # Fallback : chercher aussi à la racine du bundle
+            if not version_file.exists():
+                version_file = base_path / VERSION_FILE
+        else:
+            version_file = base_path / VERSION_FILE
+        
         if version_file.exists():
             version = version_file.read_text().strip()
             if version:
-                logger.debug(f"Version lue depuis {version_file}: {version}")
+                logger.info(f"Version lue depuis {version_file}: {version}")
                 return version
+            else:
+                logger.warning(f"Fichier de version vide : {version_file}")
+        else:
+            logger.info(f"Fichier de version introuvable : {version_file}")
     except Exception as e:
-        logger.debug(f"Impossible de lire la version depuis le fichier : {e}")
+        logger.warning(f"Impossible de lire la version depuis le fichier : {e}")
     
     # Fallback : version par défaut
-    logger.debug(f"Utilisation de la version par défaut: {DEFAULT_APP_VERSION}")
+    logger.info(f"Utilisation de la version par défaut: {DEFAULT_APP_VERSION}")
     return DEFAULT_APP_VERSION
 
 def check_for_updates(include_prerelease=False):
@@ -76,10 +93,12 @@ def check_for_updates(include_prerelease=False):
         include_prerelease: Si True, inclut les prereleases (builds automatiques)
     """
     try:
+        logger.info(f"Vérification des mises à jour (include_prerelease={include_prerelease})...")
+        
         # Si on veut inclure les prereleases, on doit récupérer toutes les releases
         if include_prerelease:
             releases_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
-            response = requests.get(releases_url, timeout=5, params={"per_page": 10})
+            response = requests.get(releases_url, timeout=10, params={"per_page": 10})
             response.raise_for_status()
             releases = response.json()
             
@@ -87,43 +106,65 @@ def check_for_updates(include_prerelease=False):
             if releases:
                 release_data = releases[0]
             else:
+                logger.info("Aucune release trouvée")
                 return {"available": False}
         else:
             # Sinon, utiliser l'endpoint /latest qui exclut les prereleases
-            response = requests.get(UPDATE_CHECK_URL, timeout=5)
+            response = requests.get(UPDATE_CHECK_URL, timeout=10)
             response.raise_for_status()
             release_data = response.json()
         
         latest_version = release_data.get("tag_name", "").lstrip("v")
-        current_version = get_current_version()
+        if not latest_version:
+            logger.warning("Aucun tag_name trouvé dans la release")
+            return {"available": False}
         
-        # Si on est à la version par défaut et qu'on détecte une release disponible,
-        # mettre à jour le fichier de version (première installation)
-        if current_version == DEFAULT_APP_VERSION and latest_version:
+        logger.info(f"Version la plus récente trouvée sur GitHub : {latest_version}")
+        
+        current_version = get_current_version()
+        logger.info(f"Version actuelle de l'application : {current_version}")
+        
+        # Si on est à la version par défaut (fichier n'existe pas), 
+        # enregistrer la version de la release actuelle comme version installée
+        # Cela permet de détecter les futures mises à jour
+        if current_version == DEFAULT_APP_VERSION:
             try:
                 from pyinstaller_utils import get_base_path
                 base_path = get_base_path()
-                version_file = base_path / VERSION_FILE
+                
+                # Pour macOS .app, placer le fichier dans le dossier de données
+                if sys.platform == "darwin" and (base_path.suffix == ".app" or (base_path / "Contents").exists()):
+                    # Trouver le dossier de données
+                    data_dir = get_user_data_dir(base_path)
+                    version_file = data_dir / VERSION_FILE
+                else:
+                    version_file = base_path / VERSION_FILE
+                
                 version_file.parent.mkdir(parents=True, exist_ok=True)
                 version_file.write_text(latest_version)
-                logger.info(f"Version initiale enregistrée : {latest_version}")
-                current_version = latest_version
+                logger.info(f"Version initiale enregistrée dans {version_file}: {latest_version}")
+                # Ne pas changer current_version ici, on veut comparer avec la version par défaut
             except Exception as e:
-                logger.debug(f"Impossible d'enregistrer la version initiale : {e}")
+                logger.warning(f"Impossible d'enregistrer la version initiale : {e}")
         
         # Comparer les versions (gérer les formats comme "20250101-abc1234")
+        is_newer = False
         try:
-            # Essayer de parser comme version normale
+            # Essayer de parser comme version normale (semver)
             latest_ver = version.parse(latest_version)
             current_ver = version.parse(current_version)
             is_newer = latest_ver > current_ver
-        except:
+            logger.info(f"Comparaison de versions : {latest_ver} > {current_ver} = {is_newer}")
+        except Exception as parse_error:
             # Si le parsing échoue (format date-SHA), comparer les strings
             # Pour les builds automatiques, on considère toujours qu'il y a une mise à jour
             # si la version est différente
             is_newer = latest_version != current_version
+            logger.info(f"Comparaison de versions (string) : '{latest_version}' != '{current_version}' = {is_newer}")
+            logger.debug(f"Erreur de parsing (normal pour formats non-semver) : {parse_error}")
         
         if is_newer:
+            logger.info(f"✅ Nouvelle version disponible : {latest_version} (actuelle : {current_version})")
             return {
                 "available": True,
                 "latest_version": latest_version,
@@ -133,9 +174,14 @@ def check_for_updates(include_prerelease=False):
                 "assets": release_data.get("assets", []),
                 "prerelease": release_data.get("prerelease", False)
             }
-        return {"available": False}
+        else:
+            logger.info(f"L'application est à jour (version {current_version})")
+            return {"available": False, "current_version": current_version, "latest_version": latest_version}
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Erreur réseau lors de la vérification des mises à jour : {e}")
+        return {"available": False, "error": f"Erreur réseau : {str(e)}"}
     except Exception as e:
-        logger.warning(f"Erreur lors de la vérification des mises à jour : {e}")
+        logger.error(f"Erreur lors de la vérification des mises à jour : {e}", exc_info=True)
         return {"available": False, "error": str(e)}
 
 def get_download_url_for_platform(include_prerelease=True):
