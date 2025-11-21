@@ -39,15 +39,22 @@ class SystemTrayManager:
         
     def _create_icon_image(self):
         """Crée une image simple pour l'icône système."""
-        # Créer une image 64x64 avec un fond vert (couleur de la pépinière)
-        image = Image.new('RGB', (64, 64), color=(34, 197, 94))  # Vert
+        # Créer une image avec support de transparence (RGBA) pour macOS
+        # Taille recommandée pour macOS: 22x22 pour la barre de menu
+        size = 22
+        image = Image.new('RGBA', (size, size), color=(0, 0, 0, 0))  # Transparent
         draw = ImageDraw.Draw(image)
         
-        # Dessiner un simple symbole (feuille/plante)
-        # Cercle pour la feuille
-        draw.ellipse([20, 15, 44, 35], fill=(255, 255, 255), outline=(255, 255, 255))
-        # Tige
-        draw.rectangle([30, 35, 34, 50], fill=(255, 255, 255))
+        # Dessiner un fond vert arrondi pour la visibilité
+        margin = 2
+        draw.ellipse([margin, margin, size-margin, size-margin], fill=(34, 197, 94, 255), outline=(255, 255, 255, 255), width=1)
+        
+        # Dessiner un simple symbole (feuille/plante) en blanc
+        # Feuille simplifiée
+        leaf_size = 8
+        leaf_x = (size - leaf_size) // 2
+        leaf_y = (size - leaf_size) // 2 - 2
+        draw.ellipse([leaf_x, leaf_y, leaf_x + leaf_size, leaf_y + leaf_size], fill=(255, 255, 255, 255))
         
         return image
     
@@ -69,10 +76,22 @@ class SystemTrayManager:
     def _open_browser(self, icon=None, item=None):
         """Ouvre le navigateur vers l'application."""
         try:
-            webbrowser.open(self.server_url)
+            # Sur macOS, utiliser 'open' pour forcer l'ouverture même si le navigateur est déjà ouvert
+            if sys.platform == "darwin":
+                import os
+                os.system(f'open "{self.server_url}" &')
+            else:
+                webbrowser.open(self.server_url)
             logger.info(f"Ouverture du navigateur vers {self.server_url}")
         except Exception as e:
             logger.error(f"Erreur lors de l'ouverture du navigateur : {e}")
+            # Fallback: essayer avec os.system sur macOS
+            if sys.platform == "darwin":
+                try:
+                    import os
+                    os.system(f'open "{self.server_url}" &')
+                except Exception:
+                    pass
     
     def _quit(self, icon=None, item=None):
         """Ferme l'application proprement."""
@@ -83,6 +102,10 @@ class SystemTrayManager:
             self.icon.stop()
         # Forcer la sortie après un court délai
         threading.Timer(0.5, lambda: os._exit(0)).start()
+    
+    def _on_clicked(self, icon, item):
+        """Gère le clic sur l'icône (ouvre l'application)."""
+        self._open_browser()
     
     def start(self):
         """Démarre l'icône système dans un thread séparé."""
@@ -97,8 +120,9 @@ class SystemTrayManager:
                 self.icon = pystray.Icon(
                     "Pépinière Valbray",
                     image,
-                    "Pépinière Valbray - Automatisations récolte",
-                    menu
+                    "Pépinière Valbray - Automatisations récolte\nCliquez pour ouvrir l'application",
+                    menu,
+                    default_action=self._open_browser  # Action par défaut au clic
                 )
                 self.icon.run()
             except Exception as e:

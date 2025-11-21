@@ -28,6 +28,7 @@ function ForecastView() {
   const [selectedParcelle, setSelectedParcelle] = useState(null);
   const [selectedVariety, setSelectedVariety] = useState(null);
   const [status, setStatus] = useState({ scriptRunning: false, scriptMode: null });
+  const [seasonError, setSeasonError] = useState(null);
 
   const hasActiveFilters = selectedDate || selectedParcelle || selectedVariety;
 
@@ -60,6 +61,8 @@ function ForecastView() {
   // Rafraîchir les prévisions quand le script se termine
   useEffect(() => {
     if (!status.scriptRunning && status.scriptMode === 'forecast') {
+      // Réinitialiser l'erreur de saison si la génération a réussi
+      setSeasonError(null);
       // Attendre un peu pour que le fichier soit créé
       const timeoutId = setTimeout(() => {
         fetchLatestForecast();
@@ -71,6 +74,7 @@ function ForecastView() {
   const fetchLatestForecast = async () => {
     setLoading(true);
     setError(null);
+    setSeasonError(null); // Réinitialiser l'erreur de saison lors du chargement
     try {
       const response = await axios.get(`${API_BASE}/forecasts/latest`);
       const data = response.data;
@@ -133,10 +137,75 @@ function ForecastView() {
     }
   };
 
+  // Vérifier si on est dans une saison de récolte
+  const isInHarvestSeason = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/parametres`);
+      const params = response.data?.data || [];
+      
+      if (!Array.isArray(params) || params.length === 0) {
+        return false;
+      }
+      
+      const currentMonth = new Date().getMonth() + 1; // getMonth() retourne 0-11, donc +1 pour avoir 1-12
+      
+      // Vérifier si au moins une variété est en saison
+      for (const param of params) {
+        const saison_debut = param.saison_debut;
+        const saison_fin = param.saison_fin;
+        
+        // Si les valeurs sont manquantes, on ignore cette variété
+        if (saison_debut === null || saison_debut === undefined || 
+            saison_fin === null || saison_fin === undefined) {
+          continue;
+        }
+        
+        try {
+          const start = parseInt(saison_debut);
+          const end = parseInt(saison_fin);
+          
+          // Gérer les saisons qui chevauchent l'année (ex: 11-3 pour nov-mars)
+          if (start <= end) {
+            // Saison normale (ex: 3-9 pour mars-septembre)
+            if (start <= currentMonth && currentMonth <= end) {
+              return true;
+            }
+          } else {
+            // Saison qui chevauche l'année (ex: 11-3 pour novembre à mars)
+            if (currentMonth >= start || currentMonth <= end) {
+              return true;
+            }
+          }
+        } catch (e) {
+          // Ignorer les erreurs de conversion
+          continue;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Erreur lors de la vérification de la saison:', error);
+      // En cas d'erreur, on autorise la génération (ne pas bloquer)
+      return true;
+    }
+  };
+
   const generateForecast = async () => {
     if (status.scriptRunning) {
       return;
     }
+    
+    // Réinitialiser les erreurs précédentes
+    setSeasonError(null);
+    setError(null);
+    
+    // Vérifier si on est dans une saison de récolte
+    const inSeason = await isInHarvestSeason();
+    if (!inSeason) {
+      setSeasonError('Période en dehors des saisons de récoltes');
+      return;
+    }
+    
     try {
       await axios.post(`${API_BASE}/run`, { mode: 'forecast' });
       // Le statut sera mis à jour automatiquement via le useEffect qui surveille status.scriptRunning
@@ -278,28 +347,40 @@ function ForecastView() {
                   )}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Button onClick={fetchLatestForecast} variant="outline" size="sm">
-                  Actualiser
-                </Button>
-                <Button 
-                  onClick={generateForecast} 
-                  disabled={status.scriptRunning} 
-                  size="sm"
-                  className="transition-default"
-                >
-                  {status.scriptRunning && status.scriptMode === 'forecast' ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Génération...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="mr-2 h-4 w-4" />
-                      Générer les prévisions
-                    </>
-                  )}
-                </Button>
+              <div className="flex flex-col items-center gap-3">
+                {seasonError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                  >
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{seasonError}</span>
+                  </motion.div>
+                )}
+                <div className="flex gap-2">
+                  <Button onClick={fetchLatestForecast} variant="outline" size="sm">
+                    Actualiser
+                  </Button>
+                  <Button 
+                    onClick={generateForecast} 
+                    disabled={status.scriptRunning} 
+                    size="sm"
+                    className="transition-default"
+                  >
+                    {status.scriptRunning && status.scriptMode === 'forecast' ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Génération...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="mr-2 h-4 w-4" />
+                        Générer les prévisions
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -318,31 +399,43 @@ function ForecastView() {
             Consultez et analysez vos prévisions de récolte
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {forecast?.filename && (
-            <Button onClick={downloadForecast} variant="outline" size="sm" className="transition-default">
-              <Download className="mr-2 h-4 w-4" />
-              Télécharger
-            </Button>
+        <div className="flex flex-col items-end gap-2">
+          {seasonError && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 px-3 py-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span>{seasonError}</span>
+            </motion.div>
           )}
-          <Button 
-            onClick={generateForecast} 
-            disabled={status.scriptRunning} 
-            size="sm" 
-            className="transition-default"
-          >
-            {status.scriptRunning && status.scriptMode === 'forecast' ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Génération...
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-4 w-4" />
-                Générer les prévisions
-              </>
+          <div className="flex items-center gap-2">
+            {forecast?.filename && (
+              <Button onClick={downloadForecast} variant="outline" size="sm" className="transition-default">
+                <Download className="mr-2 h-4 w-4" />
+                Télécharger
+              </Button>
             )}
-          </Button>
+            <Button 
+              onClick={generateForecast} 
+              disabled={status.scriptRunning} 
+              size="sm" 
+              className="transition-default"
+            >
+              {status.scriptRunning && status.scriptMode === 'forecast' ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Génération...
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  Générer les prévisions
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </motion.div>
 

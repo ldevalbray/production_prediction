@@ -263,13 +263,36 @@ def save_last_run(mode, status="✅ Succès"):
 
 def is_server_already_running(url=f"{SERVER_BASE_URL}/api/status", timeout=1.0):
     """Retourne True si une instance répond déjà sur le port attendu."""
-    if not requests:
-        return False
+    # Essayer d'abord avec requests si disponible
+    if requests:
+        try:
+            response = requests.get(url, timeout=timeout)
+            return response.ok
+        except Exception:
+            pass
+    
+    # Fallback: utiliser urllib si requests n'est pas disponible
     try:
-        response = requests.get(url, timeout=timeout)
-        return response.ok
+        import urllib.request
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
     except Exception:
-        return False
+        pass
+    
+    # Fallback: vérifier si le port est en écoute avec socket
+    try:
+        import socket
+        host, port = SERVER_HOST, SERVER_PORT
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0  # Port ouvert = serveur probablement en cours
+    except Exception:
+        pass
+    
+    return False
 
 
 def trigger_model_update_async(delay=MODEL_AUTO_UPDATE_DELAY):
@@ -1253,10 +1276,21 @@ def open_browser(target_url=None, delay=1.5, background=True):
         if delay and delay > 0:
             time.sleep(delay)
         try:
-            webbrowser.open(url)
+            # Sur macOS, forcer l'ouverture dans un nouvel onglet/fenêtre
+            if sys.platform == "darwin":
+                # Utiliser 'open' pour forcer l'ouverture même si le navigateur est déjà ouvert
+                os.system(f'open "{url}" &')
+            else:
+                webbrowser.open(url)
             logger.info(f"Navigateur ouvert vers {url}")
         except Exception as e:
             logger.error(f"Erreur lors de l'ouverture du navigateur : {e}")
+            # Fallback: essayer avec os.system sur macOS
+            if sys.platform == "darwin":
+                try:
+                    os.system(f'open "{url}" &')
+                except Exception:
+                    pass
 
     if background:
         threading.Thread(target=_open, daemon=True).start()
@@ -1388,7 +1422,20 @@ if __name__ == '__main__':
         logger.info("Serveur déjà en cours d'exécution, ouverture d'une nouvelle fenêtre vers l'instance existante.")
         splash_update("Serveur déjà actif, redirection...")
         splash_close()
-        open_browser(delay=0.1, background=False)
+        # Ouvrir le navigateur immédiatement et de manière synchrone pour s'assurer que ça fonctionne
+        try:
+            import webbrowser
+            import time
+            # Attendre un peu pour que le splash se ferme
+            time.sleep(0.2)
+            # Sur macOS, utiliser 'open' pour forcer l'ouverture
+            if sys.platform == "darwin":
+                os.system(f'open "{SERVER_BASE_URL}" &')
+            else:
+                webbrowser.open(SERVER_BASE_URL)
+            logger.info(f"Navigateur ouvert vers {SERVER_BASE_URL}")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'ouverture du navigateur : {e}")
         sys.exit(0)
 
     # Fermer le splash juste avant de démarrer le serveur (fallback si aucun accès HTTP n'arrive rapidement)
