@@ -24,6 +24,7 @@ function App() {
   const [currentView, setCurrentView] = useState('home');
   const [status, setStatus] = useState({ lastRuns: {}, scriptRunning: false, scriptMode: null });
   const [loading, setLoading] = useState(false);
+  const [appVersion, setAppVersion] = useState(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -46,6 +47,21 @@ function App() {
     const interval = setInterval(fetchStatus, 2000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  // Récupérer la version de l'application
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/updates/check`);
+        if (response.data.current_version) {
+          setAppVersion(response.data.current_version);
+        }
+      } catch (error) {
+        console.error('Erreur lors de la récupération de la version:', error);
+      }
+    };
+    fetchVersion();
+  }, []);
 
   const runScript = async (mode) => {
     console.log('App - Lancement du script:', mode);
@@ -83,7 +99,14 @@ function App() {
                 <Zap className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold tracking-tight">Pépinière Valbray</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-semibold tracking-tight">Pépinière Valbray</h1>
+                  {appVersion && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                      v{appVersion}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground hidden sm:block">Automatisations récolte</p>
               </div>
             </div>
