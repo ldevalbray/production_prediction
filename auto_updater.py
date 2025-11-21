@@ -27,19 +27,17 @@ GITHUB_REPO = "ldevalbray/production_prediction"  # Votre repo GitHub
 UPDATE_CHECK_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 # Fichiers et dossiers à PRÉSERVER lors de la mise à jour (données utilisateur)
+# NOTE: Les fichiers de données utilisateur sont maintenant dans le dossier data/
+# Seuls les fichiers à la racine sont listés ici
 PROTECTED_FILES = [
-    "recoltes.db",           # Base de données SQLite
-    "recoltes_fraises.xlsx", # Fichier Excel (si utilisé)
-    "meteo_dataset.csv",     # Données météo
-    "last_runs.json",        # Logs d'exécution
-    "app.log",               # Logs de l'application
+    "app.log",               # Logs de l'application (à la racine)
 ]
 
 PROTECTED_DIRS = [
-    "forecasts",            # Prévisions générées
-    "models",               # Modèles ML entraînés localement
+    "data",                 # Toutes les données utilisateur (recoltes.db, recoltes_fraises.xlsx, last_runs.json, etc.)
+    "forecasts",            # Prévisions générées (peut être dans data/forecasts ou à la racine)
+    "models",               # Modèles ML entraînés localement (peut être dans data/models ou à la racine)
     "models_archive",       # Archives des modèles
-    "data",                 # Données utilisateur
 ]
 
 logger = logging.getLogger(__name__)
@@ -137,6 +135,47 @@ def get_download_url_for_platform(include_prerelease=True):
     
     return None
 
+def migrate_old_files_to_data_dir(app_dir: Path):
+    """
+    Migre les anciens fichiers de données de la racine vers le dossier data/.
+    Cette fonction est appelée pour assurer la compatibilité avec les anciennes versions.
+    """
+    data_dir = app_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Fichiers à migrer de la racine vers data/
+    files_to_migrate = [
+        "recoltes.db",
+        "recoltes_fraises.xlsx",
+        "last_runs.json",
+    ]
+    
+    migrated = False
+    for filename in files_to_migrate:
+        old_path = app_dir / filename
+        new_path = data_dir / filename
+        
+        # Migrer seulement si le fichier existe à l'ancien emplacement et n'existe pas dans data/
+        if old_path.exists() and old_path.is_file() and not new_path.exists():
+            shutil.move(str(old_path), str(new_path))
+            logger.info(f"  - Migré : {filename} → data/{filename}")
+            migrated = True
+    
+    # Migrer les dossiers forecasts et models s'ils sont à la racine
+    for dirname in ["forecasts", "models"]:
+        old_dir = app_dir / dirname
+        new_dir = data_dir / dirname
+        
+        if old_dir.exists() and old_dir.is_dir() and not new_dir.exists():
+            shutil.move(str(old_dir), str(new_dir))
+            logger.info(f"  - Migré : {dirname}/ → data/{dirname}/")
+            migrated = True
+    
+    if migrated:
+        logger.info("✅ Migration des fichiers vers data/ terminée")
+    
+    return migrated
+
 def backup_user_data(app_dir: Path) -> Path:
     """
     Crée une sauvegarde complète des données utilisateur.
@@ -146,6 +185,9 @@ def backup_user_data(app_dir: Path) -> Path:
     backup_dir.mkdir(exist_ok=True)
     
     logger.info(f"Création d'une sauvegarde des données utilisateur dans {backup_dir}")
+    
+    # Migrer les anciens fichiers vers data/ avant la sauvegarde
+    migrate_old_files_to_data_dir(app_dir)
     
     # Sauvegarder les fichiers protégés
     for filename in PROTECTED_FILES:
@@ -401,7 +443,8 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         restore_user_data(backup_dir, app_dir)
         
         # 6. Exécuter les migrations de base de données si nécessaire
-        db_path = app_dir / "recoltes.db"
+        # Le fichier de base de données est maintenant dans data/
+        db_path = app_dir / "data" / "recoltes.db"
         if db_path.exists():
             current_schema_version = get_db_schema_version(db_path)
             if current_schema_version < target_schema_version:
