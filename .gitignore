@@ -80,3 +80,7 @@ config.local.py
 Thumbs.db
 .DS_Store
 
+# Fichier de version installée (généré au runtime)
+installed_version.txt
+
+installed_version.txt
