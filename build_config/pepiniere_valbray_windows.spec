@@ -54,14 +54,9 @@ datas = [
 ]
 
 # Ajouter les fichiers optionnels s'ils existent
+# NOTE: Les fichiers de données utilisateur (recoltes.db, recoltes_fraises.xlsx, model_fraises_v2.pkl)
+# ne sont PAS inclus dans les releases pour éviter d'inclure des données personnelles
 optional_files = [
-    # Fichiers Excel fournis par l'utilisateur (peuvent être absents dans l'environnement CI)
-    (base_dir / 'data' / 'recoltes_fraises.xlsx', '.'),
-    # Base de données SQLite (créée au runtime si absente)
-    (base_dir / 'recoltes.db', '.'),
-    # Modèle ML (peut être généré au runtime) - depuis models/
-    (base_dir / 'models' / 'model_fraises_v2.pkl', '.'),
-    # Template Excel créé au runtime si nécessaire (ne pas inclure dans le build)
     # Modules optionnels
     (base_dir / 'cache_utils.py', '.'),
     (base_dir / 'config.py', '.'),

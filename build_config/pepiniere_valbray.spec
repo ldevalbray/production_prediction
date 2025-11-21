@@ -33,9 +33,9 @@ scripts = [
 ]
 
 # Fichiers de données à inclure (chemins relatifs à la racine du projet)
+# NOTE: recoltes_fraises.xlsx n'est PAS inclus car c'est un fichier de données utilisateur
 datas = [
     # Fichiers de données essentiels (depuis data/)
-    (str(base_dir / 'data' / 'recoltes_fraises.xlsx'), '.'),
     (str(base_dir / 'data' / 'meteo_dataset.csv'), '.'),
     (str(base_dir / 'assets' / 'splash.png'), 'assets'),
     # Scripts Python appelés dynamiquement (depuis scripts/)
@@ -54,11 +54,9 @@ datas = [
 ]
 
 # Ajouter les fichiers optionnels s'ils existent
+# NOTE: Les fichiers de données utilisateur (recoltes.db, model_fraises_v2.pkl)
+# ne sont PAS inclus dans les releases pour éviter d'inclure des données personnelles
 optional_files = [
-    # Base de données SQLite (créée au runtime si absente)
-    (base_dir / 'recoltes.db', '.'),
-    # Modèle ML (peut être généré au runtime) - depuis models/
-    (base_dir / 'models' / 'model_fraises_v2.pkl', '.'),
     # Modules optionnels
     (base_dir / 'cache_utils.py', '.'),
     (base_dir / 'config.py', '.'),

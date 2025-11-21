@@ -15,10 +15,16 @@ except ImportError:
     def get_script_path(script_name):
         return script_name
 
-# --- CONFIG ---
-LAST_RUN_FILE = "last_runs.json"
-EXCEL_PATH = "recoltes_fraises.xlsx"
-FORECASTS_DIR = "forecasts"
+# Import de la configuration centralisée pour les chemins
+try:
+    from config import LAST_RUN_FILE, EXCEL_PATH, FORECASTS_DIR
+except ImportError:
+    # Fallback si config n'est pas disponible
+    from pathlib import Path
+    BASE_DIR = Path(__file__).parent.resolve()
+    LAST_RUN_FILE = str(BASE_DIR / "last_runs.json")
+    EXCEL_PATH = str(BASE_DIR / "recoltes_fraises.xlsx")
+    FORECASTS_DIR = str(BASE_DIR / "forecasts")
 
 script_running = False
 spinner_running = False

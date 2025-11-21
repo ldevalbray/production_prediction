@@ -15,6 +15,12 @@ except ImportError:
     # Fallback si pyinstaller_utils n'est pas disponible
     BASE_DIR = Path(__file__).parent.resolve()
 
+# Dossier pour les données utilisateur (créé au runtime si nécessaire)
+# Les fichiers de données utilisateur seront créés dans ce sous-dossier,
+# pas au même niveau que l'exécutable
+USER_DATA_DIR = BASE_DIR / "data"
+USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 # === FICHIERS ET CHEMINS ===
 # Chemins avec fallback pour compatibilité (cherche d'abord dans data/ et models/, puis à la racine)
 def _get_data_path(filename):
@@ -29,14 +35,18 @@ def _get_model_path(filename):
     root_path = BASE_DIR / filename
     return str(model_path if model_path.exists() else root_path)
 
-DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "recoltes.db"))
-EXCEL_PATH = os.getenv("EXCEL_PATH", _get_data_path("recoltes_fraises.xlsx"))
+# Fichiers de données utilisateur : créés dans le sous-dossier data/
+# Cela garantit qu'ils sont à l'intérieur de l'application, pas au même niveau que l'exécutable
+DB_PATH = os.getenv("DB_PATH", str(USER_DATA_DIR / "recoltes.db"))
+EXCEL_PATH = os.getenv("EXCEL_PATH", str(USER_DATA_DIR / "recoltes_fraises.xlsx"))
+LAST_RUN_FILE = os.getenv("LAST_RUN_FILE", str(USER_DATA_DIR / "last_runs.json"))
+
+# Fichiers de ressources (peuvent être dans le bundle ou dans data/)
 MODEL_PATH = os.getenv("MODEL_PATH", _get_model_path("model_fraises_v2.pkl"))
 WEATHER_PATH = os.getenv("WEATHER_PATH", _get_data_path("meteo_dataset.csv"))
 DATASET_PATH = os.getenv("DATASET_PATH", str(BASE_DIR / "dataset_ready_for_model.csv"))
-FORECASTS_DIR = Path(os.getenv("FORECASTS_DIR", str(BASE_DIR / "forecasts")))
-ARCHIVE_DIR = Path(os.getenv("ARCHIVE_DIR", str(BASE_DIR / "models" / "models_archive")))
-LAST_RUN_FILE = os.getenv("LAST_RUN_FILE", str(BASE_DIR / "last_runs.json"))
+FORECASTS_DIR = Path(os.getenv("FORECASTS_DIR", str(USER_DATA_DIR / "forecasts")))
+ARCHIVE_DIR = Path(os.getenv("ARCHIVE_DIR", str(USER_DATA_DIR / "models" / "models_archive")))
 
 # === COORDONNÉES GPS ===
 LAT = float(os.getenv("LAT", "43.12"))  # Hyères par défaut
