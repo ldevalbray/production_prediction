@@ -916,13 +916,27 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                 # Sauvegarder Resources/Data/ si elle existe
                 old_resources_data = old_contents / "Resources" / "Data"
                 if old_resources_data.exists():
-                    temp_resources_data = app_dir / "temp_resources_data_backup"
+                    # Sur macOS, on ne peut pas écrire dans le bundle .app
+                    # Créer la sauvegarde temporaire dans le dossier parent ou un dossier temporaire
+                    if sys.platform == "darwin" and (app_dir.suffix == ".app" or (app_dir / "Contents").exists()):
+                        # Utiliser le dossier parent de l'app (accessible en écriture)
+                        parent_dir = app_dir.parent
+                        temp_resources_data = parent_dir / f"temp_resources_data_backup_{app_dir.name}"
+                    else:
+                        # Pour Windows/Linux, utiliser le dossier de l'app
+                        temp_resources_data = app_dir / "temp_resources_data_backup"
+                    
                     if temp_resources_data.exists():
                         safe_remove(temp_resources_data)
+                    
+                    # Créer le dossier parent si nécessaire
+                    temp_resources_data.parent.mkdir(parents=True, exist_ok=True)
+                    
                     safe_copytree(old_resources_data, temp_resources_data)
                     # Vérifier que la sauvegarde a réussi
                     if not temp_resources_data.exists():
-                        raise Exception("Échec de la sauvegarde de Resources/Data/")
+                        raise Exception(f"Échec de la sauvegarde de Resources/Data/ vers {temp_resources_data}")
+                    logger.info(f"  - Sauvegarde temporaire créée : {temp_resources_data}")
                 
                 # Remplacer MacOS/ (exécutable)
                 new_macos = new_contents / "MacOS"
@@ -965,13 +979,25 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                     logger.info("  - Mise à jour de Contents/Resources/ (sauf Data/)")
                 
                 # Restaurer Resources/Data/ si elle existait
-                if temp_resources_data and temp_resources_data.exists():
-                    old_resources_data = old_contents / "Resources" / "Data"
-                    if old_resources_data.exists():
-                        safe_remove(old_resources_data)
-                    safe_copytree(temp_resources_data, old_resources_data)
-                    safe_remove(temp_resources_data)
-                    logger.info("  - Restauration de Contents/Resources/Data/")
+                if temp_resources_data:
+                    if temp_resources_data.exists():
+                        old_resources_data = old_contents / "Resources" / "Data"
+                        # Créer le dossier parent si nécessaire
+                        old_resources_data.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        if old_resources_data.exists():
+                            safe_remove(old_resources_data)
+                        safe_copytree(temp_resources_data, old_resources_data)
+                        
+                        # Vérifier que la restauration a réussi
+                        if not old_resources_data.exists():
+                            raise Exception(f"Échec de la restauration de Resources/Data/ depuis {temp_resources_data}")
+                        
+                        # Nettoyer la sauvegarde temporaire
+                        safe_remove(temp_resources_data)
+                        logger.info("  - Restauration de Contents/Resources/Data/")
+                    else:
+                        logger.warning(f"Sauvegarde temporaire introuvable : {temp_resources_data}, Resources/Data/ ne sera pas restauré")
                 
                 # Remplacer Info.plist
                 new_info_plist = new_contents / "Info.plist"
@@ -1085,8 +1111,16 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         try:
             if extract_dir and extract_dir.exists():
                 safe_remove(extract_dir)
-            if temp_resources_data and temp_resources_data.exists():
-                safe_remove(temp_resources_data)
+            if temp_resources_data:
+                # Nettoyer la sauvegarde temporaire si elle existe encore
+                if temp_resources_data.exists():
+                    safe_remove(temp_resources_data)
+                # Sur macOS, aussi nettoyer dans le dossier parent au cas où
+                if sys.platform == "darwin" and (app_dir.suffix == ".app" or (app_dir / "Contents").exists()):
+                    parent_dir = app_dir.parent
+                    temp_backup_pattern = parent_dir / f"temp_resources_data_backup_{app_dir.name}"
+                    if temp_backup_pattern.exists():
+                        safe_remove(temp_backup_pattern)
             if zip_path.exists():
                 zip_path.unlink()
         except Exception as cleanup_error:
@@ -1107,8 +1141,15 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         try:
             if extract_dir and extract_dir.exists():
                 safe_remove(extract_dir)
-            if temp_resources_data and temp_resources_data.exists():
-                safe_remove(temp_resources_data)
+            if temp_resources_data:
+                if temp_resources_data.exists():
+                    safe_remove(temp_resources_data)
+                # Sur macOS, aussi nettoyer dans le dossier parent au cas où
+                if sys.platform == "darwin" and (app_dir.suffix == ".app" or (app_dir / "Contents").exists()):
+                    parent_dir = app_dir.parent
+                    temp_backup_pattern = parent_dir / f"temp_resources_data_backup_{app_dir.name}"
+                    if temp_backup_pattern.exists():
+                        safe_remove(temp_backup_pattern)
         except Exception as cleanup_error:
             logger.warning(f"Erreur lors du nettoyage après erreur : {cleanup_error}")
         
