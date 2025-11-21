@@ -19,6 +19,7 @@ import zipfile
 import shutil
 import sqlite3
 import logging
+import os
 from typing import Optional, Dict, List
 
 # Version actuelle de l'application (par défaut, sera remplacée par la version installée)
@@ -44,6 +45,139 @@ PROTECTED_DIRS = [
 ]
 
 logger = logging.getLogger(__name__)
+
+def safe_remove(path: Path, critical: bool = False):
+    """
+    Supprime un fichier ou dossier de manière sécurisée, en gérant les liens symboliques.
+    
+    Args:
+        path: Chemin vers le fichier/dossier à supprimer
+        critical: Si True, lève une exception en cas d'échec (pour les opérations critiques)
+    """
+    if not path.exists():
+        return
+    
+    try:
+        # Vérifier si c'est un lien symbolique (doit être vérifié avant is_file/is_dir)
+        if path.is_symlink():
+            path.unlink()  # Supprimer le lien symbolique
+            logger.debug(f"Lien symbolique supprimé : {path}")
+            return
+        elif path.is_file():
+            path.unlink()  # Supprimer le fichier
+            logger.debug(f"Fichier supprimé : {path}")
+            return
+        elif path.is_dir():
+            # Pour les dossiers, utiliser une méthode qui gère les liens symboliques
+            # shutil.rmtree avec onerror pour gérer les erreurs
+            def handle_remove_readonly(func, path_str, exc):
+                """Gère les erreurs lors de la suppression, notamment les liens symboliques."""
+                path_obj = Path(path_str)
+                # Si c'est un lien symbolique, utiliser unlink
+                if path_obj.is_symlink() or os.path.islink(path_str):
+                    os.unlink(path_str)
+                else:
+                    # Sinon, essayer de changer les permissions et réessayer
+                    try:
+                        os.chmod(path_str, 0o777)
+                        func(path_str)
+                    except Exception:
+                        # Si ça échoue encore, ignorer (sera géré par la suppression manuelle)
+                        pass
+            
+            try:
+                # Essayer d'abord avec rmtree standard
+                shutil.rmtree(str(path), onerror=handle_remove_readonly)
+                logger.debug(f"Dossier supprimé : {path}")
+            except (OSError, PermissionError) as e:
+                # Si ça échoue, supprimer manuellement élément par élément
+                logger.warning(f"Erreur lors de la suppression de {path} : {e}, tentative de suppression manuelle")
+                _remove_directory_manually(path)
+                # Vérifier que la suppression a réussi
+                if path.exists() and critical:
+                    raise Exception(f"Impossible de supprimer {path}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la suppression de {path} : {e}")
+        if critical:
+            raise  # Lever l'exception pour les opérations critiques
+        # Sinon, juste logger l'erreur pour ne pas bloquer la mise à jour
+
+def _remove_directory_manually(path: Path):
+    """
+    Supprime un dossier manuellement en gérant les liens symboliques.
+    Fonction helper pour safe_remove.
+    """
+    try:
+        # Parcourir récursivement et supprimer chaque élément
+        items_to_remove = []
+        for root, dirs, files in os.walk(path, topdown=False):
+            # Supprimer les fichiers
+            for file in files:
+                file_path = Path(root) / file
+                try:
+                    if file_path.is_symlink():
+                        file_path.unlink()
+                    else:
+                        file_path.unlink()
+                except Exception as e:
+                    logger.warning(f"Impossible de supprimer {file_path} : {e}")
+            
+            # Supprimer les dossiers (après avoir supprimé leur contenu)
+            for dir_name in dirs:
+                dir_path = Path(root) / dir_name
+                try:
+                    if dir_path.is_symlink():
+                        dir_path.unlink()
+                    else:
+                        dir_path.rmdir()
+                except OSError:
+                    # Le dossier n'est pas vide ou est un lien symbolique, continuer
+                    pass
+        
+        # Finalement, supprimer le dossier racine
+        try:
+            if path.is_symlink():
+                path.unlink()
+            else:
+                path.rmdir()
+        except OSError:
+            # Si ça échoue encore, essayer avec ignore_errors
+            shutil.rmtree(path, ignore_errors=True)
+    except Exception as e:
+        logger.warning(f"Erreur lors de la suppression manuelle de {path} : {e}")
+
+def safe_copytree(src: Path, dst: Path, ignore_symlinks: bool = True):
+    """
+    Copie un dossier de manière sécurisée, en gérant les liens symboliques.
+    
+    Args:
+        src: Source
+        dst: Destination
+        ignore_symlinks: Si True, ignore les liens symboliques (recommandé pour éviter les problèmes)
+    """
+    try:
+        # Créer le dossier de destination s'il n'existe pas
+        dst.mkdir(parents=True, exist_ok=True)
+        
+        # Utiliser copytree avec une fonction d'ignore pour les liens symboliques si nécessaire
+        if ignore_symlinks:
+            def ignore_symlink(dir, files):
+                """Ignore les liens symboliques lors de la copie."""
+                ignored = []
+                for file in files:
+                    file_path = Path(dir) / file
+                    if file_path.is_symlink():
+                        ignored.append(file)
+                        logger.debug(f"Lien symbolique ignoré lors de la copie : {file_path}")
+                return ignored
+            
+            shutil.copytree(str(src), str(dst), dirs_exist_ok=True, ignore=ignore_symlink)
+        else:
+            # Copier normalement mais gérer les erreurs
+            shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+    except Exception as e:
+        logger.error(f"Erreur lors de la copie de {src} vers {dst} : {e}")
+        raise
 
 def get_current_version():
     """
@@ -313,7 +447,7 @@ def backup_user_data(app_dir: Path) -> Path:
     # Sauvegarder le dossier de données utilisateur complet
     if data_dir.exists() and data_dir.is_dir():
         dest = backup_dir / "data"
-        shutil.copytree(data_dir, dest, dirs_exist_ok=True)
+        safe_copytree(data_dir, dest)
         logger.info(f"  - Sauvegardé : data/ (dossier de données utilisateur)")
     
     # Sauvegarder les autres dossiers protégés (forecasts, models, etc. peuvent être dans data/)
@@ -326,7 +460,7 @@ def backup_user_data(app_dir: Path) -> Path:
             src = app_dir / dirname
         if src.exists() and src.is_dir():
             dest = backup_dir / dirname
-            shutil.copytree(src, dest, dirs_exist_ok=True)
+            safe_copytree(src, dest)
             logger.info(f"  - Sauvegardé : {dirname}/")
     
     return backup_dir
@@ -355,8 +489,8 @@ def restore_user_data(backup_dir: Path, app_dir: Path):
     backup_data = backup_dir / "data"
     if backup_data.exists() and backup_data.is_dir():
         if data_dir.exists():
-            shutil.rmtree(data_dir)
-        shutil.copytree(backup_data, data_dir)
+            safe_remove(data_dir)
+        safe_copytree(backup_data, data_dir)
         logger.info(f"  - Restauré : data/ (dossier de données utilisateur)")
     
     # Restaurer les autres dossiers protégés
@@ -370,8 +504,8 @@ def restore_user_data(backup_dir: Path, app_dir: Path):
             if not dest.parent.exists():
                 dest = app_dir / dirname
             if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(src, dest)
+                safe_remove(dest)
+            safe_copytree(src, dest)
             logger.info(f"  - Restauré : {dirname}/")
 
 def download_update(download_url: str, progress_callback=None) -> Path:
@@ -512,6 +646,51 @@ def run_database_migrations(db_path: Path, from_version: int, to_version: int):
         logger.error(f"Erreur lors des migrations : {e}")
         raise
 
+def _check_disk_space(path: Path, required_bytes: int) -> bool:
+    """Vérifie qu'il y a assez d'espace disque disponible."""
+    try:
+        import shutil
+        stat = shutil.disk_usage(path)
+        available = stat.free
+        # Nécessiter au moins 2x l'espace requis (pour sécurité)
+        if available < required_bytes * 2:
+            logger.error(f"Espace disque insuffisant : {available / 1024 / 1024:.1f} MB disponible, "
+                        f"{required_bytes * 2 / 1024 / 1024:.1f} MB requis")
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"Impossible de vérifier l'espace disque : {e}")
+        return True  # Continuer si on ne peut pas vérifier
+
+def _check_write_permissions(path: Path) -> bool:
+    """Vérifie qu'on a les permissions d'écriture."""
+    try:
+        # Essayer de créer un fichier test
+        test_file = path / ".write_test"
+        test_file.write_text("test")
+        test_file.unlink()
+        return True
+    except (PermissionError, OSError) as e:
+        logger.error(f"Pas de permissions d'écriture dans {path} : {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"Erreur lors de la vérification des permissions : {e}")
+        return True  # Continuer si on ne peut pas vérifier
+
+def _verify_file_integrity(file_path: Path, expected_size: int = None) -> bool:
+    """Vérifie l'intégrité d'un fichier."""
+    try:
+        if not file_path.exists():
+            logger.error(f"Fichier introuvable : {file_path}")
+            return False
+        if expected_size and file_path.stat().st_size != expected_size:
+            logger.error(f"Taille de fichier incorrecte : {file_path}")
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"Erreur lors de la vérification de {file_path} : {e}")
+        return False
+
 def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1):
     """
     Installe la mise à jour en préservant toutes les données utilisateur.
@@ -521,21 +700,58 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         app_dir: Dossier de l'application
         target_schema_version: Version cible du schéma de base de données
     """
+    backup_dir = None
+    extract_dir = None
+    temp_resources_data = None
+    
     try:
         logger.info("Début de l'installation de la mise à jour")
         
+        # Vérifications préliminaires
+        if not zip_path.exists():
+            raise Exception(f"Fichier ZIP introuvable : {zip_path}")
+        
+        if not app_dir.exists():
+            raise Exception(f"Dossier de l'application introuvable : {app_dir}")
+        
+        # Vérifier les permissions d'écriture
+        if not _check_write_permissions(app_dir):
+            raise Exception(f"Pas de permissions d'écriture dans {app_dir}")
+        
+        # Vérifier l'espace disque (estimer 3x la taille du ZIP)
+        zip_size = zip_path.stat().st_size
+        if not _check_disk_space(app_dir, zip_size * 3):
+            raise Exception("Espace disque insuffisant pour la mise à jour")
+        
         # 1. Créer une sauvegarde complète
         backup_dir = backup_user_data(app_dir)
+        if not backup_dir.exists():
+            raise Exception("Échec de la création de la sauvegarde")
         
         # 2. Extraire la nouvelle version dans un dossier temporaire
         extract_dir = app_dir / "update_temp"
         if extract_dir.exists():
-            shutil.rmtree(extract_dir)
-        extract_dir.mkdir(exist_ok=True)
+            safe_remove(extract_dir, critical=True)  # Critique : doit pouvoir supprimer l'ancien extract_dir
+        extract_dir.mkdir(parents=True, exist_ok=True)
         
         logger.info(f"Extraction de la mise à jour dans {extract_dir}")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # Vérifier l'intégrité du ZIP avant extraction
+                bad_file = zip_ref.testzip()
+                if bad_file:
+                    raise Exception(f"Archive ZIP corrompue : {bad_file}")
+                
+                # Extraire
+                zip_ref.extractall(extract_dir)
+                
+                # Vérifier que l'extraction a réussi (au moins un fichier)
+                if not any(extract_dir.rglob("*")):
+                    raise Exception("L'extraction du ZIP n'a produit aucun fichier")
+        except zipfile.BadZipFile as e:
+            raise Exception(f"Fichier ZIP invalide : {e}")
+        except Exception as e:
+            raise Exception(f"Erreur lors de l'extraction : {e}")
         
         # 3. Trouver le dossier de l'application dans l'archive
         # Pour macOS : l'archive contient PepiniereValbray.app
@@ -622,19 +838,24 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                 
                 # Sauvegarder Resources/Data/ si elle existe
                 old_resources_data = old_contents / "Resources" / "Data"
-                temp_resources_data = None
                 if old_resources_data.exists():
                     temp_resources_data = app_dir / "temp_resources_data_backup"
                     if temp_resources_data.exists():
-                        shutil.rmtree(temp_resources_data)
-                    shutil.copytree(old_resources_data, temp_resources_data)
+                        safe_remove(temp_resources_data)
+                    safe_copytree(old_resources_data, temp_resources_data)
+                    # Vérifier que la sauvegarde a réussi
+                    if not temp_resources_data.exists():
+                        raise Exception("Échec de la sauvegarde de Resources/Data/")
                 
                 # Remplacer MacOS/ (exécutable)
                 new_macos = new_contents / "MacOS"
                 old_macos = old_contents / "MacOS"
                 if new_macos.exists() and old_macos.exists():
-                    shutil.rmtree(old_macos)
-                    shutil.copytree(new_macos, old_macos)
+                    safe_remove(old_macos)
+                    safe_copytree(new_macos, old_macos)
+                    # Vérifier que la copie a réussi
+                    if not old_macos.exists() or not any(old_macos.iterdir()):
+                        raise Exception("Échec de la mise à jour de Contents/MacOS/")
                     logger.info("  - Mise à jour de Contents/MacOS/")
                 
                 # Remplacer Frameworks/ si présent
@@ -642,8 +863,8 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                 old_frameworks = old_contents / "Frameworks"
                 if new_frameworks.exists():
                     if old_frameworks.exists():
-                        shutil.rmtree(old_frameworks)
-                    shutil.copytree(new_frameworks, old_frameworks)
+                        safe_remove(old_frameworks)
+                    safe_copytree(new_frameworks, old_frameworks)
                     logger.info("  - Mise à jour de Contents/Frameworks/")
                 
                 # Remplacer Resources/ sauf Data/
@@ -655,23 +876,24 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                         if item.name != "Data":
                             old_item = old_resources / item.name
                             if old_item.exists():
-                                if old_item.is_dir():
-                                    shutil.rmtree(old_item)
-                                else:
-                                    old_item.unlink()
+                                safe_remove(old_item)
                             if item.is_dir():
-                                shutil.copytree(item, old_item)
+                                safe_copytree(item, old_item)
                             else:
-                                shutil.copy2(item, old_item)
+                                # Vérifier que ce n'est pas un lien symbolique avant de copier
+                                if not item.is_symlink():
+                                    shutil.copy2(item, old_item)
+                                else:
+                                    logger.debug(f"Lien symbolique ignoré : {item}")
                     logger.info("  - Mise à jour de Contents/Resources/ (sauf Data/)")
                 
                 # Restaurer Resources/Data/ si elle existait
                 if temp_resources_data and temp_resources_data.exists():
                     old_resources_data = old_contents / "Resources" / "Data"
                     if old_resources_data.exists():
-                        shutil.rmtree(old_resources_data)
-                    shutil.copytree(temp_resources_data, old_resources_data)
-                    shutil.rmtree(temp_resources_data)
+                        safe_remove(old_resources_data)
+                    safe_copytree(temp_resources_data, old_resources_data)
+                    safe_remove(temp_resources_data)
                     logger.info("  - Restauration de Contents/Resources/Data/")
                 
                 # Remplacer Info.plist
@@ -691,8 +913,8 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
             
             if new_internal.exists() and old_internal.exists():
                 logger.info("  - Mise à jour de _internal/")
-                shutil.rmtree(old_internal)
-                shutil.copytree(new_internal, old_internal)
+                safe_remove(old_internal)
+                safe_copytree(new_internal, old_internal)
             
             # Remplacer l'exécutable principal
             for exe_name in ["PepiniereValbray.exe", "PepiniereValbray"]:
@@ -781,10 +1003,17 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         except Exception as e:
             logger.warning(f"Impossible d'enregistrer la version installée : {e}")
         
-        # 8. Nettoyer
+        # 8. Nettoyer (seulement si tout s'est bien passé)
         logger.info("Nettoyage des fichiers temporaires...")
-        shutil.rmtree(extract_dir)
-        zip_path.unlink()
+        try:
+            if extract_dir and extract_dir.exists():
+                safe_remove(extract_dir)
+            if temp_resources_data and temp_resources_data.exists():
+                safe_remove(temp_resources_data)
+            if zip_path.exists():
+                zip_path.unlink()
+        except Exception as cleanup_error:
+            logger.warning(f"Erreur lors du nettoyage (non critique) : {cleanup_error}")
         
         # Garder le backup pendant 7 jours (optionnel)
         # Vous pouvez ajouter une logique pour supprimer les anciens backups
@@ -795,14 +1024,28 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         return True
         
     except Exception as e:
-        logger.error(f"❌ Erreur lors de l'installation : {e}")
+        logger.error(f"❌ Erreur lors de l'installation : {e}", exc_info=True)
+        
+        # Nettoyer les fichiers temporaires en cas d'erreur
+        try:
+            if extract_dir and extract_dir.exists():
+                safe_remove(extract_dir)
+            if temp_resources_data and temp_resources_data.exists():
+                safe_remove(temp_resources_data)
+        except Exception as cleanup_error:
+            logger.warning(f"Erreur lors du nettoyage après erreur : {cleanup_error}")
+        
         # En cas d'erreur, restaurer depuis la sauvegarde
-        if backup_dir.exists():
+        if backup_dir and backup_dir.exists():
             logger.info("Tentative de restauration depuis la sauvegarde...")
             try:
                 restore_user_data(backup_dir, app_dir)
-                logger.info("Données restaurées depuis la sauvegarde")
+                logger.info("✅ Données restaurées depuis la sauvegarde")
             except Exception as restore_error:
-                logger.error(f"Erreur lors de la restauration : {restore_error}")
+                logger.error(f"❌ Erreur critique lors de la restauration : {restore_error}", exc_info=True)
+                logger.error("⚠️  Les données peuvent être dans backup_before_update/")
+                # Ne pas lever d'exception ici pour permettre à l'utilisateur de restaurer manuellement
+        
+        # Lever l'exception originale pour signaler l'échec
         raise
 
