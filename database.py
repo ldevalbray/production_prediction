@@ -143,10 +143,23 @@ def init_database():
                     precipitation_sum REAL,
                     sunshine_duration REAL,
                     relative_humidity_mean REAL,
+                    shortwave_radiation_sum REAL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(forecast_date, date, parcelle, variety)
                 )
             """)
+            
+            # Migration : Ajouter la colonne shortwave_radiation_sum si elle n'existe pas
+            try:
+                cursor.execute("ALTER TABLE forecasts ADD COLUMN shortwave_radiation_sum REAL")
+                logger.info("Colonne shortwave_radiation_sum ajoutée à la table forecasts")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+                    # La colonne existe déjà, c'est normal
+                    pass
+                else:
+                    # Autre erreur, on la propage
+                    raise
             
             # Table: schema_version (gestion des versions de schéma pour les migrations)
             cursor.execute("""

@@ -177,7 +177,7 @@ url = (
     f"https://api.open-meteo.com/v1/forecast?"
     f"latitude={LAT}&longitude={LON}"
     "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,"
-    "sunshine_duration,relative_humidity_2m_mean&timezone=" + TIMEZONE
+    "sunshine_duration,relative_humidity_2m_mean,shortwave_radiation_sum&timezone=" + TIMEZONE
 )
 
 df_forecast = None
@@ -188,13 +188,19 @@ try:
     data = response.json()
     if "daily" not in data:
         raise ValueError("Réponse météo invalide (pas de clé 'daily').")
+    # Gérer shortwave_radiation_sum qui peut ne pas être disponible dans toutes les régions
+    shortwave_data = data["daily"].get("shortwave_radiation_sum")
+    if shortwave_data is None:
+        shortwave_data = [np.nan] * len(data["daily"]["time"])
+    
     df_forecast = pd.DataFrame({
         "date": pd.to_datetime(data["daily"]["time"]),
         "temp_max": data["daily"]["temperature_2m_max"],
         "temp_min": data["daily"]["temperature_2m_min"],
         "rain_mm": data["daily"]["precipitation_sum"],
         "sun_hours": np.array(data["daily"]["sunshine_duration"]) / 3600.0,
-        "humidity": data["daily"]["relative_humidity_2m_mean"]
+        "humidity": data["daily"]["relative_humidity_2m_mean"],
+        "shortwave_radiation": shortwave_data  # W/m² (rayonnement solaire global)
     })
     print("✅ Données météo récupérées depuis l'API Open-Meteo.")
 except Exception as e:
@@ -206,7 +212,7 @@ except Exception as e:
             raise ValueError("meteo_dataset.csv est vide")
         # Nettoyer et prendre la moyenne des 30 derniers jours (ou tous si moins)
         df_recent = df_meteo.tail(30)
-        for col in ["temp_max", "temp_min", "rain_mm", "sun_hours", "humidity"]:
+        for col in ["temp_max", "temp_min", "rain_mm", "sun_hours", "humidity", "shortwave_radiation"]:
             if col not in df_recent.columns:
                 df_recent[col] = np.nan
         avg_values = df_recent.mean(numeric_only=True)
@@ -217,7 +223,8 @@ except Exception as e:
             "temp_min": [avg_values.get("temp_min")] * FORECAST_DAYS,
             "rain_mm": [avg_values.get("rain_mm", 0)] * FORECAST_DAYS,
             "sun_hours": [avg_values.get("sun_hours", 0)] * FORECAST_DAYS,
-            "humidity": [avg_values.get("humidity")] * FORECAST_DAYS
+            "humidity": [avg_values.get("humidity")] * FORECAST_DAYS,
+            "shortwave_radiation": [avg_values.get("shortwave_radiation", np.nan)] * FORECAST_DAYS
         })
         print("✅ Données météo générées à partir des moyennes locales.")
     except Exception as fallback_error:
@@ -260,7 +267,7 @@ if params_in_season.empty:
     print(f"⚠️ Aucune variété n'est en saison de plantation pour le mois {current_month}.")
     print("   Aucune prévision ne sera générée.")
     # Créer un DataFrame vide avec les colonnes attendues
-    df_pred = pd.DataFrame(columns=["date", "horizon", "parcelle", "variety", "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours"])
+    df_pred = pd.DataFrame(columns=["date", "horizon", "parcelle", "variety", "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours", "shortwave_radiation"])
 else:
     excluded_count = len(params) - len(params_in_season)
     if excluded_count > 0:
@@ -271,7 +278,7 @@ else:
 # === GÉNÉRATION DES COMBINAISONS PARCELLE / VARIÉTÉ ===
 if params_in_season.empty:
     # Si aucune variété en saison, df_pred est déjà créé vide plus haut
-    df_pred = pd.DataFrame(columns=["date", "horizon", "parcelle", "variety", "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours"])
+    df_pred = pd.DataFrame(columns=["date", "horizon", "parcelle", "variety", "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours", "shortwave_radiation"])
 else:
     rows = []
     for _, p in params_in_season.iterrows():
@@ -286,6 +293,7 @@ else:
                 "rain_mm": w.rain_mm,
                 "humidity": w.humidity,
                 "sun_hours": w.sun_hours,
+                "shortwave_radiation": getattr(w, 'shortwave_radiation', np.nan),
                 "parcelle": p["parcelle"],
                 "variety": p["variety"]
             })
@@ -537,7 +545,7 @@ if not df_pred.empty:
 # Sauvegarde temporaire des identifiants et données météo avant encodage
 # Inclure les données météo dans l'export (elles sont déjà dans df_pred depuis la génération)
 if not df_pred.empty:
-    meteo_cols = ["temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours"]
+    meteo_cols = ["temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours", "shortwave_radiation"]
     cols_to_save = ["date", "horizon", "parcelle", "variety"]
     # Ajouter les colonnes météo si elles existent dans df_pred
     for col in meteo_cols:
@@ -553,6 +561,15 @@ if df_pred.empty:
     df_pred_for_output = df_pred.copy()
     predictions_kg_par_rangee = np.array([])
     predictions_std_par_rangee = np.array([])
+    # Créer un DataFrame avec les colonnes attendues même si vide
+    df_pred = pd.DataFrame(columns=[
+        "date", "horizon", "parcelle", "variety",
+        "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours", "shortwave_radiation",
+        "predicted_kg_par_rangee", "predicted_std_par_rangee",
+        "nb_rangees",
+        "predicted_kg_total", "predicted_std_kg_total",
+        "confidence_min_kg_total", "confidence_max_kg_total"
+    ])
 else:
     X_cols = model.feature_names_in_
     X_encoded = pd.get_dummies(df_pred, columns=["parcelle", "variety"], drop_first=True)
@@ -587,21 +604,11 @@ else:
     merged["confidence_max_kg_total"] = merged["predicted_kg_total"] + merged["predicted_std_kg_total"]
 
     df_pred = merged.copy()
-else:
-    # Si aucune prévision, créer un DataFrame avec les colonnes attendues
-    df_pred = pd.DataFrame(columns=[
-        "date", "horizon", "parcelle", "variety",
-        "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours",
-        "predicted_kg_par_rangee", "predicted_std_par_rangee",
-        "nb_rangees",
-        "predicted_kg_total", "predicted_std_kg_total",
-        "confidence_min_kg_total", "confidence_max_kg_total"
-    ])
 
 # Réorganiser les colonnes pour un affichage plus clair
 col_order = [
     "date", "horizon", "parcelle", "variety",
-    "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours",
+    "temp_mean", "temp_min", "temp_max", "rain_mm", "humidity", "sun_hours", "shortwave_radiation",
     "predicted_kg_par_rangee", "predicted_std_par_rangee",
     "nb_rangees",
     "predicted_kg_total", "predicted_std_kg_total",
@@ -639,7 +646,8 @@ if USE_DB:
         'temp_min': 'temperature_min',
         'rain_mm': 'precipitation_sum',
         'sun_hours': 'sunshine_duration',
-        'humidity': 'relative_humidity_mean'
+        'humidity': 'relative_humidity_mean',
+        'shortwave_radiation': 'shortwave_radiation_sum'
     }
     
     # Renommer les colonnes si elles existent

@@ -315,7 +315,10 @@ if df_recoltes["date"].min() < meteo["date"].min() or df_recoltes["date"].max() 
 dataset = pd.merge(df_recoltes, meteo, on="date", how="left")
 
 # Vérification des NaN météo
-if dataset[["temp_mean", "rain_mm", "sun_hours"]].isna().any().any():
+meteo_cols_to_check = ["temp_mean", "rain_mm", "sun_hours"]
+if "shortwave_radiation" in dataset.columns:
+    meteo_cols_to_check.append("shortwave_radiation")
+if dataset[meteo_cols_to_check].isna().any().any():
     print("⚠️ Avertissement : des lignes contiennent des données météo manquantes.")
 
 # === 2.5. INTÉGRATION DE PLANTS_PAR_ANNEE ===

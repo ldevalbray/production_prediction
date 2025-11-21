@@ -50,7 +50,8 @@ def fetch_weather_data(start_date, end_date):
         f"&start_date={start_date.strftime('%Y-%m-%d')}"
         f"&end_date={end_date.strftime('%Y-%m-%d')}"
         "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,"
-        "sunshine_duration,relative_humidity_2m_mean,wind_speed_10m_mean,wind_gusts_10m_max"
+        "sunshine_duration,relative_humidity_2m_mean,wind_speed_10m_mean,wind_gusts_10m_max,"
+        "shortwave_radiation_sum"
         f"&timezone={TIMEZONE}"
     )
     
@@ -64,6 +65,11 @@ def fetch_weather_data(start_date, end_date):
             return pd.DataFrame()
         
         # Création du DataFrame
+        # Gérer shortwave_radiation_sum qui peut ne pas être disponible dans toutes les régions
+        shortwave_data = data["daily"].get("shortwave_radiation_sum")
+        if shortwave_data is None:
+            shortwave_data = [np.nan] * len(data["daily"]["time"])
+        
         df_new = pd.DataFrame({
             "date": pd.to_datetime(data["daily"]["time"]),
             "temp_max": data["daily"]["temperature_2m_max"],
@@ -72,7 +78,8 @@ def fetch_weather_data(start_date, end_date):
             "sun_hours": np.array(data["daily"]["sunshine_duration"]) / 3600.0,  # Conversion secondes -> heures
             "humidity": data["daily"]["relative_humidity_2m_mean"],
             "wind_avg": data["daily"]["wind_speed_10m_mean"],
-            "wind_gust": data["daily"]["wind_gusts_10m_max"]
+            "wind_gust": data["daily"]["wind_gusts_10m_max"],
+            "shortwave_radiation": shortwave_data  # W/m² (rayonnement solaire global)
         })
         
         # Calcul de temp_mean
@@ -84,7 +91,7 @@ def fetch_weather_data(start_date, end_date):
         # Réorganiser les colonnes dans l'ordre attendu
         df_new = df_new[[
             "date", "rain_mm", "temp_min", "temp_max", "temp_mean",
-            "humidity", "wind_avg", "wind_gust", "sun_hours", "day_of_year"
+            "humidity", "wind_avg", "wind_gust", "sun_hours", "shortwave_radiation", "day_of_year"
         ]]
         
         print(f"✅ {len(df_new)} jours de données récupérés")
@@ -109,7 +116,7 @@ def update_meteo_dataset():
         # Créer un fichier vide avec les bonnes colonnes
         df_existing = pd.DataFrame(columns=[
             "date", "rain_mm", "temp_min", "temp_max", "temp_mean",
-            "humidity", "wind_avg", "wind_gust", "sun_hours", "day_of_year"
+            "humidity", "wind_avg", "wind_gust", "sun_hours", "shortwave_radiation", "day_of_year"
         ])
         last_date = None
     else:
@@ -155,12 +162,45 @@ def update_meteo_dataset():
         df_new_filtered = df_new
         df_combined = df_new
     else:
+        # Vérifier si le fichier existant a la colonne shortwave_radiation
+        # Si elle manque, l'ajouter avec des valeurs NaN pour compatibilité
+        if "shortwave_radiation" not in df_existing.columns:
+            print("⚠️ Colonne 'shortwave_radiation' manquante dans le fichier existant. Ajout avec valeurs NaN pour les données anciennes.")
+            df_existing["shortwave_radiation"] = np.nan
+        
         # Éviter les doublons en supprimant les dates qui existent déjà
+        # MAIS : remplacer les valeurs estimées par les valeurs réelles si disponibles
         df_existing_dates = set(df_existing["date"].dt.date)
-        df_new_filtered = df_new[~df_new["date"].dt.date.isin(df_existing_dates)]
+        
+        # Séparer les nouvelles dates et les dates existantes avec valeurs réelles
+        new_dates = df_new[~df_new["date"].dt.date.isin(df_existing_dates)]
+        existing_dates_with_real_data = df_new[df_new["date"].dt.date.isin(df_existing_dates)]
+        
+        # Pour les dates existantes, remplacer si on a des données réelles (non NaN)
+        # Cela permet de remplacer les valeurs estimées par les valeurs réelles quand disponibles
+        replaced_count = 0
+        if not existing_dates_with_real_data.empty:
+            for _, new_row in existing_dates_with_real_data.iterrows():
+                date_match = df_existing["date"].dt.date == new_row["date"].date()
+                if date_match.any():
+                    idx = df_existing[date_match].index[0]
+                    # Remplacer seulement si la nouvelle valeur n'est pas NaN
+                    if not pd.isna(new_row.get("shortwave_radiation")):
+                        df_existing.loc[idx, "shortwave_radiation"] = new_row["shortwave_radiation"]
+                        replaced_count += 1
+        
+        if replaced_count > 0:
+            print(f"   ✅ {replaced_count} valeur(s) estimée(s) remplacée(s) par des données réelles")
+        
+        df_new_filtered = new_dates
         
         if df_new_filtered.empty:
             print("✅ Aucune nouvelle donnée à ajouter (toutes les dates existent déjà)")
+            # Même si pas de nouvelles données, s'assurer que la colonne existe
+            if "shortwave_radiation" not in df_existing.columns:
+                df_existing["shortwave_radiation"] = np.nan
+                df_existing.to_csv(WEATHER_PATH, index=False)
+                print("   ✅ Colonne 'shortwave_radiation' ajoutée au fichier existant")
             return True
         
         # Concaténer et trier par date
