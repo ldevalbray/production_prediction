@@ -58,9 +58,10 @@ def safe_remove(path: Path, critical: bool = False):
         return
     
     try:
-        # Vérifier si c'est un lien symbolique (doit être vérifié avant is_file/is_dir)
-        if path.is_symlink():
-            path.unlink()  # Supprimer le lien symbolique
+        # Vérifier si c'est un lien symbolique (doit être vérifié AVANT is_file/is_dir)
+        # Utiliser os.path.islink() qui est plus fiable que path.is_symlink() dans certains cas
+        if os.path.islink(str(path)) or path.is_symlink():
+            path.unlink()  # Supprimer le lien symbolique (NE JAMAIS utiliser rmtree)
             logger.debug(f"Lien symbolique supprimé : {path}")
             return
         elif path.is_file():
@@ -68,28 +69,76 @@ def safe_remove(path: Path, critical: bool = False):
             logger.debug(f"Fichier supprimé : {path}")
             return
         elif path.is_dir():
+            # VÉRIFICATION CRITIQUE : Ne JAMAIS appeler rmtree sur un lien symbolique
+            # Vérifier une dernière fois avant d'appeler rmtree (au cas où le statut aurait changé)
+            if os.path.islink(str(path)) or path.is_symlink():
+                path.unlink()
+                logger.debug(f"Lien symbolique (dossier) supprimé : {path}")
+                return
+            
             # Pour les dossiers, utiliser une méthode qui gère les liens symboliques
-            # shutil.rmtree avec onerror pour gérer les erreurs
-            def handle_remove_readonly(func, path_str, exc):
+            # IMPORTANT: Ne jamais appeler rmtree directement, toujours vérifier les liens d'abord
+            def handle_remove_readonly(func, path_str, exc_info):
                 """Gère les erreurs lors de la suppression, notamment les liens symboliques."""
-                path_obj = Path(path_str)
-                # Si c'est un lien symbolique, utiliser unlink
-                if path_obj.is_symlink() or os.path.islink(path_str):
-                    os.unlink(path_str)
-                else:
-                    # Sinon, essayer de changer les permissions et réessayer
+                try:
+                    # Vérifier si c'est un lien symbolique AVANT toute autre opération
+                    # C'est CRITIQUE : rmtree ne peut JAMAIS être appelé sur un lien symbolique
+                    if os.path.islink(path_str):
+                        # C'est un lien symbolique : utiliser unlink uniquement
+                        os.unlink(path_str)
+                        return  # CRITIQUE : ne JAMAIS appeler func() (rmtree) sur un lien symbolique
+                    
+                    # Vérifier avec Path aussi
+                    try:
+                        path_obj = Path(path_str)
+                        if path_obj.is_symlink():
+                            os.unlink(path_str)
+                            return  # CRITIQUE : ne JAMAIS appeler func() sur un lien symbolique
+                    except:
+                        pass
+                    
+                    # Ce n'est PAS un lien symbolique, on peut essayer de changer les permissions
                     try:
                         os.chmod(path_str, 0o777)
                         func(path_str)
                     except Exception:
-                        # Si ça échoue encore, ignorer (sera géré par la suppression manuelle)
+                        # Si ça échoue, essayer unlink comme dernier recours
+                        try:
+                            os.unlink(path_str)
+                        except:
+                            pass
+                except Exception as e:
+                    logger.debug(f"Erreur dans handle_remove_readonly pour {path_str} : {e}")
+                    # Dernier recours : si c'est un lien, utiliser unlink (NE JAMAIS appeler func)
+                    try:
+                        if os.path.islink(path_str):
+                            os.unlink(path_str)
+                    except:
                         pass
             
             try:
-                # Essayer d'abord avec rmtree standard
+                # Vérifier une dernière fois avant d'appeler rmtree
+                if os.path.islink(str(path)) or path.is_symlink():
+                    path.unlink()
+                    logger.debug(f"Lien symbolique détecté avant rmtree, supprimé avec unlink : {path}")
+                    return
+                
+                # Essayer d'abord avec rmtree standard (mais avec gestion d'erreur)
+                # rmtree ne devrait jamais être appelé sur un lien symbolique grâce aux vérifications
                 shutil.rmtree(str(path), onerror=handle_remove_readonly)
                 logger.debug(f"Dossier supprimé : {path}")
             except (OSError, PermissionError) as e:
+                # Si l'erreur mentionne "symbolic link", c'est qu'on a raté une vérification
+                error_msg = str(e).lower()
+                if 'symbolic link' in error_msg or 'symlink' in error_msg:
+                    logger.warning(f"Lien symbolique détecté dans l'erreur, utilisation de unlink : {path}")
+                    try:
+                        if os.path.islink(str(path)) or path.is_symlink():
+                            path.unlink()
+                            return
+                    except:
+                        pass
+                
                 # Si ça échoue, supprimer manuellement élément par élément
                 logger.warning(f"Erreur lors de la suppression de {path} : {e}, tentative de suppression manuelle")
                 _remove_directory_manually(path)
@@ -106,43 +155,71 @@ def _remove_directory_manually(path: Path):
     """
     Supprime un dossier manuellement en gérant les liens symboliques.
     Fonction helper pour safe_remove.
+    IMPORTANT: Ne suit PAS les liens symboliques pour éviter les boucles infinies.
     """
     try:
         # Parcourir récursivement et supprimer chaque élément
-        items_to_remove = []
-        for root, dirs, files in os.walk(path, topdown=False):
+        # Utiliser followlinks=False pour NE PAS suivre les liens symboliques
+        for root, dirs, files in os.walk(path, topdown=False, followlinks=False):
             # Supprimer les fichiers
             for file in files:
                 file_path = Path(root) / file
                 try:
-                    if file_path.is_symlink():
+                    # Toujours utiliser unlink pour les fichiers (gère les liens symboliques)
+                    if file_path.exists() or file_path.is_symlink():
                         file_path.unlink()
-                    else:
-                        file_path.unlink()
-                except Exception as e:
+                except (OSError, PermissionError) as e:
                     logger.warning(f"Impossible de supprimer {file_path} : {e}")
+                except Exception as e:
+                    logger.warning(f"Erreur inattendue lors de la suppression de {file_path} : {e}")
             
             # Supprimer les dossiers (après avoir supprimé leur contenu)
             for dir_name in dirs:
                 dir_path = Path(root) / dir_name
                 try:
+                    # Vérifier si c'est un lien symbolique AVANT d'essayer rmdir
                     if dir_path.is_symlink():
                         dir_path.unlink()
-                    else:
-                        dir_path.rmdir()
-                except OSError:
-                    # Le dossier n'est pas vide ou est un lien symbolique, continuer
-                    pass
+                    elif dir_path.exists():
+                        # Essayer rmdir seulement si ce n'est pas un lien symbolique
+                        try:
+                            dir_path.rmdir()
+                        except OSError:
+                            # Le dossier n'est pas vide, continuer
+                            pass
+                except (OSError, PermissionError) as e:
+                    logger.warning(f"Impossible de supprimer {dir_path} : {e}")
+                except Exception as e:
+                    logger.warning(f"Erreur inattendue lors de la suppression de {dir_path} : {e}")
         
         # Finalement, supprimer le dossier racine
         try:
             if path.is_symlink():
                 path.unlink()
-            else:
-                path.rmdir()
-        except OSError:
-            # Si ça échoue encore, essayer avec ignore_errors
-            shutil.rmtree(path, ignore_errors=True)
+            elif path.exists():
+                # Essayer rmdir d'abord
+                try:
+                    path.rmdir()
+                except OSError:
+                    # Si rmdir échoue, vérifier s'il reste des fichiers
+                    # Si oui, essayer une dernière fois avec rmtree en gérant les erreurs
+                    try:
+                        # Utiliser onerror pour gérer les liens symboliques
+                        def handle_error(func, path_str, exc_info):
+                            path_obj = Path(path_str)
+                            if path_obj.is_symlink() or os.path.islink(path_str):
+                                os.unlink(path_str)
+                            else:
+                                # Ignorer l'erreur
+                                pass
+                        shutil.rmtree(str(path), onerror=handle_error)
+                    except Exception:
+                        # Dernier recours : ignorer complètement
+                        pass
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Impossible de supprimer le dossier racine {path} : {e}")
+        except Exception as e:
+            logger.warning(f"Erreur inattendue lors de la suppression du dossier racine {path} : {e}")
     except Exception as e:
         logger.warning(f"Erreur lors de la suppression manuelle de {path} : {e}")
 
