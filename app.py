@@ -769,14 +769,10 @@ def upload_excel():
         temp_path = temp_dir / file.filename
         file.save(str(temp_path))
         
-        # Mettre à jour EXCEL_PATH temporairement pour la migration
-        import os
-        old_excel_path = os.environ.get('EXCEL_PATH')
-        os.environ['EXCEL_PATH'] = str(temp_path)
-        
         try:
             from scripts.migrate_excel_to_db import migrate_excel_to_db
-            success = migrate_excel_to_db()
+            # Passer directement le chemin du fichier temporaire
+            success = migrate_excel_to_db(excel_path=str(temp_path))
             
             # Nettoyer le fichier temporaire
             temp_path.unlink()
@@ -785,12 +781,11 @@ def upload_excel():
                 return jsonify({"message": "Données importées depuis Excel avec succès"})
             else:
                 return jsonify({"error": "Échec de l'importation des données"}), 500
-        finally:
-            # Restaurer l'ancien EXCEL_PATH
-            if old_excel_path:
-                os.environ['EXCEL_PATH'] = old_excel_path
-            elif 'EXCEL_PATH' in os.environ:
-                del os.environ['EXCEL_PATH']
+        except Exception as e:
+            # Nettoyer le fichier temporaire même en cas d'erreur
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
                 
     except Exception as e:
         logger.error(f"Erreur lors de l'upload et import Excel : {e}", exc_info=True)

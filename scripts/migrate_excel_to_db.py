@@ -17,16 +17,34 @@ from database import (
 
 # Utiliser config.py si disponible, sinon fallback
 try:
-    from config import EXCEL_PATH
+    from config import EXCEL_PATH as DEFAULT_EXCEL_PATH
 except ImportError:
     # Fallback: chercher dans data/ puis à la racine
     BASE_DIR = Path(__file__).parent.parent.resolve()
     data_path = BASE_DIR / "data" / "recoltes_fraises.xlsx"
     root_path = BASE_DIR / "recoltes_fraises.xlsx"
-    EXCEL_PATH = str(data_path if data_path.exists() else root_path)
+    DEFAULT_EXCEL_PATH = str(data_path if data_path.exists() else root_path)
 
-def migrate_excel_to_db():
-    """Migre toutes les données depuis Excel vers SQLite."""
+def migrate_excel_to_db(excel_path=None):
+    """Migre toutes les données depuis Excel vers SQLite.
+    
+    Args:
+        excel_path: Chemin vers le fichier Excel à importer. Si None, utilise EXCEL_PATH de config.py.
+    
+    Returns:
+        bool: True si la migration a réussi, False sinon.
+    """
+    # Utiliser le chemin fourni ou celui de la config
+    if excel_path:
+        EXCEL_PATH = excel_path
+    else:
+        # Si aucun chemin n'est fourni, utiliser celui de la config ou de l'environnement
+        import os
+        env_excel_path = os.getenv('EXCEL_PATH')
+        if env_excel_path and Path(env_excel_path).exists():
+            EXCEL_PATH = env_excel_path
+        else:
+            EXCEL_PATH = DEFAULT_EXCEL_PATH
     
     if not Path(EXCEL_PATH).exists():
         print(f"❌ Fichier Excel introuvable : {EXCEL_PATH}")

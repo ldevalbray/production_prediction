@@ -21,10 +21,13 @@ import sqlite3
 import logging
 from typing import Optional, Dict, List
 
-# Version actuelle de l'application
-APP_VERSION = "1.0.0"  # ⚠️ À mettre à jour à chaque release
+# Version actuelle de l'application (par défaut, sera remplacée par la version installée)
+DEFAULT_APP_VERSION = "1.0.0"  # Version par défaut si aucune version n'est trouvée
 GITHUB_REPO = "ldevalbray/production_prediction"  # Votre repo GitHub
 UPDATE_CHECK_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+# Fichier pour stocker la version installée
+VERSION_FILE = "installed_version.txt"
 
 # Fichiers et dossiers à PRÉSERVER lors de la mise à jour (données utilisateur)
 # NOTE: Les fichiers de données utilisateur sont maintenant dans le dossier data/
@@ -43,8 +46,27 @@ PROTECTED_DIRS = [
 logger = logging.getLogger(__name__)
 
 def get_current_version():
-    """Retourne la version actuelle de l'application."""
-    return APP_VERSION
+    """
+    Retourne la version actuelle de l'application.
+    Essaie de lire depuis le fichier installed_version.txt, sinon utilise la version par défaut.
+    """
+    from pyinstaller_utils import get_base_path
+    
+    # Essayer de lire depuis le fichier de version installée
+    try:
+        base_path = get_base_path()
+        version_file = base_path / VERSION_FILE
+        if version_file.exists():
+            version = version_file.read_text().strip()
+            if version:
+                logger.debug(f"Version lue depuis {version_file}: {version}")
+                return version
+    except Exception as e:
+        logger.debug(f"Impossible de lire la version depuis le fichier : {e}")
+    
+    # Fallback : version par défaut
+    logger.debug(f"Utilisation de la version par défaut: {DEFAULT_APP_VERSION}")
+    return DEFAULT_APP_VERSION
 
 def check_for_updates(include_prerelease=False):
     """
@@ -74,6 +96,20 @@ def check_for_updates(include_prerelease=False):
         
         latest_version = release_data.get("tag_name", "").lstrip("v")
         current_version = get_current_version()
+        
+        # Si on est à la version par défaut et qu'on détecte une release disponible,
+        # mettre à jour le fichier de version (première installation)
+        if current_version == DEFAULT_APP_VERSION and latest_version:
+            try:
+                from pyinstaller_utils import get_base_path
+                base_path = get_base_path()
+                version_file = base_path / VERSION_FILE
+                version_file.parent.mkdir(parents=True, exist_ok=True)
+                version_file.write_text(latest_version)
+                logger.info(f"Version initiale enregistrée : {latest_version}")
+                current_version = latest_version
+            except Exception as e:
+                logger.debug(f"Impossible d'enregistrer la version initiale : {e}")
         
         # Comparer les versions (gérer les formats comme "20250101-abc1234")
         try:
@@ -456,22 +492,41 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
             zip_ref.extractall(extract_dir)
         
         # 3. Trouver le dossier de l'application dans l'archive
-        # L'archive contient généralement dist/PepiniereValbray/
+        # Pour macOS : l'archive contient PepiniereValbray.app
+        # Pour Windows : l'archive contient PepiniereValbray/ avec _internal/
         new_app_dir = None
-        for item in extract_dir.rglob("PepiniereValbray"):
-            if item.is_dir() and (item / "_internal").exists():
-                new_app_dir = item
+        new_app_bundle = None
+        
+        # D'abord, chercher un .app bundle (macOS)
+        for item in extract_dir.rglob("PepiniereValbray.app"):
+            if item.is_dir() and (item / "Contents").exists():
+                new_app_bundle = item
+                logger.info(f"Bundle .app trouvé : {new_app_bundle}")
                 break
         
-        if not new_app_dir:
-            # Fallback : chercher le premier dossier avec _internal
-            for item in extract_dir.iterdir():
+        # Si pas de .app, chercher un dossier avec _internal (Windows)
+        if not new_app_bundle:
+            for item in extract_dir.rglob("PepiniereValbray"):
                 if item.is_dir() and (item / "_internal").exists():
                     new_app_dir = item
+                    logger.info(f"Dossier avec _internal trouvé : {new_app_dir}")
                     break
         
-        if not new_app_dir:
-            raise Exception("Structure de l'archive invalide : dossier PepiniereValbray introuvable")
+        # Fallback : chercher le premier dossier avec _internal
+        if not new_app_dir and not new_app_bundle:
+            for item in extract_dir.iterdir():
+                if item.is_dir():
+                    if (item / "_internal").exists():
+                        new_app_dir = item
+                        logger.info(f"Dossier avec _internal trouvé (fallback) : {new_app_dir}")
+                        break
+                    elif item.suffix == ".app" and (item / "Contents").exists():
+                        new_app_bundle = item
+                        logger.info(f"Bundle .app trouvé (fallback) : {new_app_bundle}")
+                        break
+        
+        if not new_app_dir and not new_app_bundle:
+            raise Exception("Structure de l'archive invalide : dossier PepiniereValbray ou PepiniereValbray.app introuvable")
         
         # 4. Remplacer les fichiers de l'application (SAUF les données utilisateur)
         logger.info("Remplacement des fichiers de l'application...")
@@ -479,24 +534,129 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # Liste des fichiers/dossiers à exclure (données utilisateur)
         exclude_items = set(PROTECTED_FILES + PROTECTED_DIRS)
         
-        # Remplacer _internal (code de l'application)
-        new_internal = new_app_dir / "_internal"
-        old_internal = app_dir / "_internal"
+        # Gérer macOS .app bundle
+        if new_app_bundle:
+            # Pour macOS, on doit remplacer le contenu du .app bundle
+            # Trouver le .app existant
+            old_app_bundle = None
+            if app_dir.suffix == ".app":
+                old_app_bundle = app_dir
+            elif (app_dir / "Contents").exists():
+                # app_dir pointe vers le .app
+                old_app_bundle = app_dir
+            else:
+                # Remonter depuis app_dir pour trouver le .app
+                # app_dir peut être Contents/Resources/Data/ ou un autre chemin
+                current_path = app_dir
+                max_depth = 10  # Limiter la profondeur pour éviter les boucles infinies
+                depth = 0
+                while current_path != current_path.parent and depth < max_depth:
+                    if current_path.suffix == ".app" and (current_path / "Contents").exists():
+                        old_app_bundle = current_path
+                        break
+                    # Vérifier si un .app est dans le dossier courant
+                    for item in current_path.iterdir():
+                        if item.suffix == ".app" and (item / "Contents").exists():
+                            old_app_bundle = item
+                            break
+                    if old_app_bundle:
+                        break
+                    current_path = current_path.parent
+                    depth += 1
+            
+            if not old_app_bundle:
+                raise Exception(f"Bundle .app existant introuvable dans {app_dir}. Impossible de mettre à jour.")
+            
+            # Mettre à jour le bundle .app
+            if old_app_bundle:
+                logger.info(f"  - Mise à jour du bundle .app : {old_app_bundle}")
+                # Remplacer Contents/ sauf Resources/Data/ (données utilisateur)
+                new_contents = new_app_bundle / "Contents"
+                old_contents = old_app_bundle / "Contents"
+                
+                # Sauvegarder Resources/Data/ si elle existe
+                old_resources_data = old_contents / "Resources" / "Data"
+                temp_resources_data = None
+                if old_resources_data.exists():
+                    temp_resources_data = app_dir / "temp_resources_data_backup"
+                    if temp_resources_data.exists():
+                        shutil.rmtree(temp_resources_data)
+                    shutil.copytree(old_resources_data, temp_resources_data)
+                
+                # Remplacer MacOS/ (exécutable)
+                new_macos = new_contents / "MacOS"
+                old_macos = old_contents / "MacOS"
+                if new_macos.exists() and old_macos.exists():
+                    shutil.rmtree(old_macos)
+                    shutil.copytree(new_macos, old_macos)
+                    logger.info("  - Mise à jour de Contents/MacOS/")
+                
+                # Remplacer Frameworks/ si présent
+                new_frameworks = new_contents / "Frameworks"
+                old_frameworks = old_contents / "Frameworks"
+                if new_frameworks.exists():
+                    if old_frameworks.exists():
+                        shutil.rmtree(old_frameworks)
+                    shutil.copytree(new_frameworks, old_frameworks)
+                    logger.info("  - Mise à jour de Contents/Frameworks/")
+                
+                # Remplacer Resources/ sauf Data/
+                new_resources = new_contents / "Resources"
+                old_resources = old_contents / "Resources"
+                if new_resources.exists():
+                    # Copier les fichiers de Resources/ sauf Data/
+                    for item in new_resources.iterdir():
+                        if item.name != "Data":
+                            old_item = old_resources / item.name
+                            if old_item.exists():
+                                if old_item.is_dir():
+                                    shutil.rmtree(old_item)
+                                else:
+                                    old_item.unlink()
+                            if item.is_dir():
+                                shutil.copytree(item, old_item)
+                            else:
+                                shutil.copy2(item, old_item)
+                    logger.info("  - Mise à jour de Contents/Resources/ (sauf Data/)")
+                
+                # Restaurer Resources/Data/ si elle existait
+                if temp_resources_data and temp_resources_data.exists():
+                    old_resources_data = old_contents / "Resources" / "Data"
+                    if old_resources_data.exists():
+                        shutil.rmtree(old_resources_data)
+                    shutil.copytree(temp_resources_data, old_resources_data)
+                    shutil.rmtree(temp_resources_data)
+                    logger.info("  - Restauration de Contents/Resources/Data/")
+                
+                # Remplacer Info.plist
+                new_info_plist = new_contents / "Info.plist"
+                old_info_plist = old_contents / "Info.plist"
+                if new_info_plist.exists():
+                    if old_info_plist.exists():
+                        old_info_plist.unlink()
+                    shutil.copy2(new_info_plist, old_info_plist)
+                    logger.info("  - Mise à jour de Contents/Info.plist")
         
-        if new_internal.exists() and old_internal.exists():
-            logger.info("  - Mise à jour de _internal/")
-            shutil.rmtree(old_internal)
-            shutil.copytree(new_internal, old_internal)
-        
-        # Remplacer l'exécutable principal
-        for exe_name in ["PepiniereValbray.exe", "PepiniereValbray"]:
-            new_exe = new_app_dir / exe_name
-            old_exe = app_dir / exe_name
-            if new_exe.exists():
-                if old_exe.exists():
-                    old_exe.unlink()
-                shutil.copy2(new_exe, old_exe)
-                logger.info(f"  - Mise à jour de {exe_name}")
+        # Gérer Windows/Linux (dossier avec _internal)
+        elif new_app_dir:
+            # Remplacer _internal (code de l'application)
+            new_internal = new_app_dir / "_internal"
+            old_internal = app_dir / "_internal"
+            
+            if new_internal.exists() and old_internal.exists():
+                logger.info("  - Mise à jour de _internal/")
+                shutil.rmtree(old_internal)
+                shutil.copytree(new_internal, old_internal)
+            
+            # Remplacer l'exécutable principal
+            for exe_name in ["PepiniereValbray.exe", "PepiniereValbray"]:
+                new_exe = new_app_dir / exe_name
+                old_exe = app_dir / exe_name
+                if new_exe.exists():
+                    if old_exe.exists():
+                        old_exe.unlink()
+                    shutil.copy2(new_exe, old_exe)
+                    logger.info(f"  - Mise à jour de {exe_name}")
         
         # 5. Restaurer les données utilisateur depuis la sauvegarde
         restore_user_data(backup_dir, app_dir)
@@ -512,15 +672,28 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # Chercher meteo_dataset.csv dans la nouvelle version (peut être dans _internal ou data/)
         new_meteo_path = None
         
-        # Chercher dans _internal (où PyInstaller place les fichiers de données)
-        new_meteo_in_internal = new_app_dir / "_internal" / "meteo_dataset.csv"
-        if new_meteo_in_internal.exists():
-            new_meteo_path = new_meteo_in_internal
-        else:
-            # Chercher dans data/ de la nouvelle version
-            new_meteo_in_data = new_app_dir / "data" / "meteo_dataset.csv"
-            if new_meteo_in_data.exists():
-                new_meteo_path = new_meteo_in_data
+        # Chercher meteo_dataset.csv dans la nouvelle version
+        # Pour macOS .app
+        if new_app_bundle:
+            new_meteo_in_resources = new_app_bundle / "Contents" / "Resources" / "meteo_dataset.csv"
+            if new_meteo_in_resources.exists():
+                new_meteo_path = new_meteo_in_resources
+            else:
+                # Chercher dans _internal du bundle (si présent)
+                new_meteo_in_internal = new_app_bundle / "Contents" / "Resources" / "_internal" / "meteo_dataset.csv"
+                if new_meteo_in_internal.exists():
+                    new_meteo_path = new_meteo_in_internal
+        # Pour Windows/Linux
+        elif new_app_dir:
+            # Chercher dans _internal (où PyInstaller place les fichiers de données)
+            new_meteo_in_internal = new_app_dir / "_internal" / "meteo_dataset.csv"
+            if new_meteo_in_internal.exists():
+                new_meteo_path = new_meteo_in_internal
+            else:
+                # Chercher dans data/ de la nouvelle version
+                new_meteo_in_data = new_app_dir / "data" / "meteo_dataset.csv"
+                if new_meteo_in_data.exists():
+                    new_meteo_path = new_meteo_in_data
         
         if new_meteo_path:
             if local_meteo.exists():
@@ -543,7 +716,26 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
             else:
                 logger.info("Schéma de la base de données à jour")
         
-        # 7. Nettoyer
+        # 7. Enregistrer la version installée
+        # Récupérer la version depuis les informations de la release
+        try:
+            update_info = check_for_updates(include_prerelease=True)
+            if update_info.get("available"):
+                installed_version = update_info.get("latest_version")
+                version_file = app_dir / VERSION_FILE
+                # Pour macOS .app, placer le fichier dans Resources/Data/
+                if app_dir.suffix == ".app" or (app_dir / "Contents").exists():
+                    data_dir = get_user_data_dir(app_dir)
+                    version_file = data_dir / VERSION_FILE
+                else:
+                    version_file = app_dir / VERSION_FILE
+                version_file.parent.mkdir(parents=True, exist_ok=True)
+                version_file.write_text(installed_version)
+                logger.info(f"Version installée enregistrée : {installed_version}")
+        except Exception as e:
+            logger.warning(f"Impossible d'enregistrer la version installée : {e}")
+        
+        # 8. Nettoyer
         logger.info("Nettoyage des fichiers temporaires...")
         shutil.rmtree(extract_dir)
         zip_path.unlink()
