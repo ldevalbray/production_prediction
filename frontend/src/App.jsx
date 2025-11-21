@@ -107,7 +107,7 @@ function App() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground hidden sm:block">Automatisations récolte • Mise à jour automatique</p>
+                <p className="text-xs text-muted-foreground hidden sm:block">Automatisations récolte • Mise à jour automatique • Système optimisé</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
