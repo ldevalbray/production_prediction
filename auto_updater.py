@@ -768,13 +768,54 @@ def _verify_file_integrity(file_path: Path, expected_size: int = None) -> bool:
         logger.error(f"Erreur lors de la vérification de {file_path} : {e}")
         return False
 
+def _find_app_bundle(app_dir: Path) -> Path:
+    """
+    Trouve le bundle .app à partir de app_dir qui peut être Contents/Resources/Data/.
+    
+    Args:
+        app_dir: Chemin qui peut être le bundle .app, Contents/Resources/Data/, ou autre
+        
+    Returns:
+        Le chemin du bundle .app
+    """
+    # Si app_dir est déjà le bundle .app
+    if app_dir.suffix == ".app" and (app_dir / "Contents").exists():
+        return app_dir
+    
+    # Si app_dir pointe vers Contents/Resources/Data/, remonter jusqu'au .app
+    current_path = app_dir
+    max_depth = 10
+    depth = 0
+    
+    while current_path != current_path.parent and depth < max_depth:
+        # Vérifier si on est dans un bundle .app
+        if current_path.suffix == ".app" and (current_path / "Contents").exists():
+            return current_path
+        
+        # Vérifier si le parent est un bundle .app
+        parent = current_path.parent
+        if parent.suffix == ".app" and (parent / "Contents").exists():
+            return parent
+        
+        # Vérifier si un .app est dans le dossier courant
+        if current_path.is_dir():
+            for item in current_path.iterdir():
+                if item.suffix == ".app" and (item / "Contents").exists():
+                    return item
+        
+        current_path = current_path.parent
+        depth += 1
+    
+    # Si on ne trouve pas, retourner app_dir tel quel
+    return app_dir
+
 def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1):
     """
     Installe la mise à jour en préservant toutes les données utilisateur.
     
     Args:
         zip_path: Chemin vers le fichier ZIP de la mise à jour
-        app_dir: Dossier de l'application
+        app_dir: Dossier de l'application (peut être le bundle .app ou Contents/Resources/Data/)
         target_schema_version: Version cible du schéma de base de données
     """
     backup_dir = None
@@ -784,29 +825,43 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
     try:
         logger.info("Début de l'installation de la mise à jour")
         
+        # Trouver le bundle .app réel (app_dir peut être Contents/Resources/Data/)
+        app_bundle = _find_app_bundle(app_dir)
+        logger.info(f"Bundle .app détecté : {app_bundle}")
+        logger.info(f"app_dir fourni : {app_dir}")
+        
+        # Déterminer le dossier parent pour les fichiers temporaires (accessible en écriture)
+        if sys.platform == "darwin" and app_bundle.suffix == ".app":
+            # Sur macOS, utiliser le dossier parent du bundle .app
+            parent_dir = app_bundle.parent
+        else:
+            # Pour Windows/Linux, utiliser le dossier de l'app
+            parent_dir = app_bundle
+        
         # Vérifications préliminaires
         if not zip_path.exists():
             raise Exception(f"Fichier ZIP introuvable : {zip_path}")
         
-        if not app_dir.exists():
-            raise Exception(f"Dossier de l'application introuvable : {app_dir}")
+        if not app_bundle.exists():
+            raise Exception(f"Bundle de l'application introuvable : {app_bundle}")
         
-        # Vérifier les permissions d'écriture
-        if not _check_write_permissions(app_dir):
-            raise Exception(f"Pas de permissions d'écriture dans {app_dir}")
+        # Vérifier les permissions d'écriture dans le dossier parent (pour la sauvegarde temporaire)
+        if not _check_write_permissions(parent_dir):
+            raise Exception(f"Pas de permissions d'écriture dans {parent_dir}")
         
         # Vérifier l'espace disque (estimer 3x la taille du ZIP)
         zip_size = zip_path.stat().st_size
-        if not _check_disk_space(app_dir, zip_size * 3):
+        if not _check_disk_space(parent_dir, zip_size * 3):
             raise Exception("Espace disque insuffisant pour la mise à jour")
         
         # 1. Créer une sauvegarde complète
-        backup_dir = backup_user_data(app_dir)
+        backup_dir = backup_user_data(app_bundle)
         if not backup_dir.exists():
             raise Exception("Échec de la création de la sauvegarde")
         
         # 2. Extraire la nouvelle version dans un dossier temporaire
-        extract_dir = app_dir / "update_temp"
+        # Utiliser le dossier parent pour l'extraction (accessible en écriture)
+        extract_dir = parent_dir / f"update_temp_{app_bundle.name}"
         if extract_dir.exists():
             safe_remove(extract_dir, critical=True)  # Critique : doit pouvoir supprimer l'ancien extract_dir
         extract_dir.mkdir(parents=True, exist_ok=True)
@@ -875,36 +930,11 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         
         # Gérer macOS .app bundle
         if new_app_bundle:
-            # Pour macOS, on doit remplacer le contenu du .app bundle
-            # Trouver le .app existant
-            old_app_bundle = None
-            if app_dir.suffix == ".app":
-                old_app_bundle = app_dir
-            elif (app_dir / "Contents").exists():
-                # app_dir pointe vers le .app
-                old_app_bundle = app_dir
-            else:
-                # Remonter depuis app_dir pour trouver le .app
-                # app_dir peut être Contents/Resources/Data/ ou un autre chemin
-                current_path = app_dir
-                max_depth = 10  # Limiter la profondeur pour éviter les boucles infinies
-                depth = 0
-                while current_path != current_path.parent and depth < max_depth:
-                    if current_path.suffix == ".app" and (current_path / "Contents").exists():
-                        old_app_bundle = current_path
-                        break
-                    # Vérifier si un .app est dans le dossier courant
-                    for item in current_path.iterdir():
-                        if item.suffix == ".app" and (item / "Contents").exists():
-                            old_app_bundle = item
-                            break
-                    if old_app_bundle:
-                        break
-                    current_path = current_path.parent
-                    depth += 1
+            # Utiliser le bundle .app trouvé précédemment
+            old_app_bundle = app_bundle
             
-            if not old_app_bundle:
-                raise Exception(f"Bundle .app existant introuvable dans {app_dir}. Impossible de mettre à jour.")
+            if not old_app_bundle or not old_app_bundle.exists():
+                raise Exception(f"Bundle .app existant introuvable : {app_bundle}. Impossible de mettre à jour.")
             
             # Mettre à jour le bundle .app
             if old_app_bundle:
@@ -917,14 +947,8 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                 old_resources_data = old_contents / "Resources" / "Data"
                 if old_resources_data.exists():
                     # Sur macOS, on ne peut pas écrire dans le bundle .app
-                    # Créer la sauvegarde temporaire dans le dossier parent ou un dossier temporaire
-                    if sys.platform == "darwin" and (app_dir.suffix == ".app" or (app_dir / "Contents").exists()):
-                        # Utiliser le dossier parent de l'app (accessible en écriture)
-                        parent_dir = app_dir.parent
-                        temp_resources_data = parent_dir / f"temp_resources_data_backup_{app_dir.name}"
-                    else:
-                        # Pour Windows/Linux, utiliser le dossier de l'app
-                        temp_resources_data = app_dir / "temp_resources_data_backup"
+                    # Créer la sauvegarde temporaire dans le dossier parent (accessible en écriture)
+                    temp_resources_data = parent_dir / f"temp_resources_data_backup_{app_bundle.name}"
                     
                     if temp_resources_data.exists():
                         safe_remove(temp_resources_data)
@@ -1011,8 +1035,10 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # Gérer Windows/Linux (dossier avec _internal)
         elif new_app_dir:
             # Remplacer _internal (code de l'application)
+            # Pour Windows/Linux, app_dir devrait pointer vers le dossier de l'app
+            old_app_dir = app_bundle if app_bundle.suffix != ".app" else app_bundle.parent
             new_internal = new_app_dir / "_internal"
-            old_internal = app_dir / "_internal"
+            old_internal = old_app_dir / "_internal"
             
             if new_internal.exists() and old_internal.exists():
                 logger.info("  - Mise à jour de _internal/")
@@ -1022,7 +1048,7 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
             # Remplacer l'exécutable principal
             for exe_name in ["PepiniereValbray.exe", "PepiniereValbray"]:
                 new_exe = new_app_dir / exe_name
-                old_exe = app_dir / exe_name
+                old_exe = old_app_dir / exe_name
                 if new_exe.exists():
                     if old_exe.exists():
                         old_exe.unlink()
@@ -1030,12 +1056,12 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                     logger.info(f"  - Mise à jour de {exe_name}")
         
         # 5. Restaurer les données utilisateur depuis la sauvegarde
-        restore_user_data(backup_dir, app_dir)
+        restore_user_data(backup_dir, app_bundle)
         
         # 5.1. Gérer meteo_dataset.csv de manière conditionnelle
         # Si le fichier existe déjà localement (utilisateur l'a utilisé/modifié), le protéger
         # Sinon, le copier depuis la nouvelle version (première installation)
-        data_dir = get_user_data_dir(app_dir)
+        data_dir = get_user_data_dir(app_bundle)
         data_dir.mkdir(parents=True, exist_ok=True)
         
         local_meteo = data_dir / "meteo_dataset.csv"
@@ -1077,7 +1103,7 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         
         # 6. Exécuter les migrations de base de données si nécessaire
         # Le fichier de base de données est maintenant dans le dossier de données utilisateur
-        data_dir = get_user_data_dir(app_dir)
+        data_dir = get_user_data_dir(app_bundle)
         db_path = data_dir / "recoltes.db"
         if db_path.exists():
             current_schema_version = get_db_schema_version(db_path)
@@ -1093,13 +1119,9 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
             update_info = check_for_updates(include_prerelease=True)
             if update_info.get("available"):
                 installed_version = update_info.get("latest_version")
-                version_file = app_dir / VERSION_FILE
                 # Pour macOS .app, placer le fichier dans Resources/Data/
-                if app_dir.suffix == ".app" or (app_dir / "Contents").exists():
-                    data_dir = get_user_data_dir(app_dir)
-                    version_file = data_dir / VERSION_FILE
-                else:
-                    version_file = app_dir / VERSION_FILE
+                data_dir = get_user_data_dir(app_bundle)
+                version_file = data_dir / VERSION_FILE
                 version_file.parent.mkdir(parents=True, exist_ok=True)
                 version_file.write_text(installed_version)
                 logger.info(f"Version installée enregistrée : {installed_version}")
@@ -1116,9 +1138,8 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                 if temp_resources_data.exists():
                     safe_remove(temp_resources_data)
                 # Sur macOS, aussi nettoyer dans le dossier parent au cas où
-                if sys.platform == "darwin" and (app_dir.suffix == ".app" or (app_dir / "Contents").exists()):
-                    parent_dir = app_dir.parent
-                    temp_backup_pattern = parent_dir / f"temp_resources_data_backup_{app_dir.name}"
+                if sys.platform == "darwin" and app_bundle.suffix == ".app":
+                    temp_backup_pattern = parent_dir / f"temp_resources_data_backup_{app_bundle.name}"
                     if temp_backup_pattern.exists():
                         safe_remove(temp_backup_pattern)
             if zip_path.exists():
@@ -1145,9 +1166,8 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                 if temp_resources_data.exists():
                     safe_remove(temp_resources_data)
                 # Sur macOS, aussi nettoyer dans le dossier parent au cas où
-                if sys.platform == "darwin" and (app_dir.suffix == ".app" or (app_dir / "Contents").exists()):
-                    parent_dir = app_dir.parent
-                    temp_backup_pattern = parent_dir / f"temp_resources_data_backup_{app_dir.name}"
+                if sys.platform == "darwin" and app_bundle.suffix == ".app":
+                    temp_backup_pattern = parent_dir / f"temp_resources_data_backup_{app_bundle.name}"
                     if temp_backup_pattern.exists():
                         safe_remove(temp_backup_pattern)
         except Exception as cleanup_error:
@@ -1157,7 +1177,7 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         if backup_dir and backup_dir.exists():
             logger.info("Tentative de restauration depuis la sauvegarde...")
             try:
-                restore_user_data(backup_dir, app_dir)
+                restore_user_data(backup_dir, app_bundle)
                 logger.info("✅ Données restaurées depuis la sauvegarde")
             except Exception as restore_error:
                 logger.error(f"❌ Erreur critique lors de la restauration : {restore_error}", exc_info=True)
