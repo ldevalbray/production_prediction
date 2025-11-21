@@ -442,6 +442,36 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # 5. Restaurer les données utilisateur depuis la sauvegarde
         restore_user_data(backup_dir, app_dir)
         
+        # 5.1. Gérer meteo_dataset.csv de manière conditionnelle
+        # Si le fichier existe déjà localement (utilisateur l'a utilisé/modifié), le protéger
+        # Sinon, le copier depuis la nouvelle version (première installation)
+        data_dir = app_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        local_meteo = data_dir / "meteo_dataset.csv"
+        
+        # Chercher meteo_dataset.csv dans la nouvelle version (peut être dans _internal ou data/)
+        new_meteo_path = None
+        
+        # Chercher dans _internal (où PyInstaller place les fichiers de données)
+        new_meteo_in_internal = new_app_dir / "_internal" / "meteo_dataset.csv"
+        if new_meteo_in_internal.exists():
+            new_meteo_path = new_meteo_in_internal
+        else:
+            # Chercher dans data/ de la nouvelle version
+            new_meteo_in_data = new_app_dir / "data" / "meteo_dataset.csv"
+            if new_meteo_in_data.exists():
+                new_meteo_path = new_meteo_in_data
+        
+        if new_meteo_path:
+            if local_meteo.exists():
+                # Le fichier existe déjà localement : le protéger (ne pas l'écraser)
+                logger.info("  - meteo_dataset.csv existe déjà localement, préservation de la version utilisateur")
+            else:
+                # Première installation : copier depuis la nouvelle version
+                logger.info("  - Copie de meteo_dataset.csv depuis la nouvelle version (première installation)")
+                shutil.copy2(new_meteo_path, local_meteo)
+        
         # 6. Exécuter les migrations de base de données si nécessaire
         # Le fichier de base de données est maintenant dans data/
         db_path = app_dir / "data" / "recoltes.db"
