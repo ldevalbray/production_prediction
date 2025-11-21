@@ -13,36 +13,36 @@ def get_base_path():
     """Retourne le chemin de base de l'application.
     
     Dans un exécutable PyInstaller, retourne le dossier de l'exécutable.
-    Pour macOS .app, retourne le dossier contenant le .app (pas le bundle).
+    Pour macOS .app, retourne un dossier à l'intérieur du bundle .app (Contents/Resources/).
     Sinon, retourne le dossier du script.
     
     Les fichiers de données utilisateur seront créés dans ce répertoire,
-    pas au même niveau que l'exécutable.
+    organisés dans un sous-dossier dédié.
     """
     if is_pyinstaller():
         # Dans un exécutable, le chemin de base est le dossier de l'exécutable
         exe_path = Path(sys.executable)
         
         # Pour macOS .app, sys.executable pointe vers Contents/MacOS/executable
-        # On veut le dossier contenant le .app
+        # On veut créer les données à l'intérieur du bundle .app
         if sys.platform == "darwin" and ".app" in exe_path.as_posix():
             # Remonter jusqu'au .app
             app_path = exe_path
             while app_path.name != "Contents" and app_path.parent != app_path:
                 app_path = app_path.parent
             if app_path.name == "Contents":
-                # Le dossier de base est le parent de Contents (le .app lui-même)
-                # Mais on veut le dossier contenant le .app pour pouvoir écrire
+                # Le bundle .app est le parent de Contents
                 app_bundle = app_path.parent
-                # Retourner le dossier parent du .app (où on peut écrire)
-                # Les fichiers seront créés dans ce dossier, pas dans le bundle
-                base_path = app_bundle.parent
-                # Créer un sous-dossier pour les données utilisateur si nécessaire
-                # Cela garantit que les fichiers sont organisés et pas au même niveau que l'exécutable
-                return base_path
+                # Créer un dossier Resources/Data à l'intérieur du bundle
+                # Structure: PepiniereValbray.app/Contents/Resources/Data/
+                resources_dir = app_path / "Resources"
+                data_dir = resources_dir / "Data"
+                # Créer le dossier s'il n'existe pas
+                data_dir.mkdir(parents=True, exist_ok=True)
+                return data_dir
         
         # Pour Windows/Linux, retourner le dossier de l'exécutable
-        # Les fichiers seront créés dans ce dossier, pas au même niveau que l'exécutable
+        # Les fichiers seront créés dans un sous-dossier data/ de ce dossier
         return exe_path.parent
     else:
         # En développement, le chemin de base est le dossier du script

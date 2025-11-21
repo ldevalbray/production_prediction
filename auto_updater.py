@@ -135,12 +135,38 @@ def get_download_url_for_platform(include_prerelease=True):
     
     return None
 
+def get_user_data_dir(app_dir: Path) -> Path:
+    """
+    Retourne le chemin du dossier de données utilisateur.
+    Pour macOS .app, retourne Contents/Resources/Data/ à l'intérieur du bundle.
+    Pour Windows/Linux, retourne data/ dans le dossier de l'application.
+    """
+    import sys
+    if sys.platform == "darwin":
+        # Pour macOS, vérifier si app_dir est un .app ou contient un .app
+        if app_dir.suffix == ".app":
+            # app_dir est le bundle .app
+            return app_dir / "Contents" / "Resources" / "Data"
+        elif (app_dir / "Contents" / "Resources").exists():
+            # app_dir pointe déjà vers le .app
+            return app_dir / "Contents" / "Resources" / "Data"
+        else:
+            # Chercher un .app dans app_dir
+            for item in app_dir.iterdir():
+                if item.suffix == ".app":
+                    return item / "Contents" / "Resources" / "Data"
+            # Fallback: créer data/ dans app_dir
+            return app_dir / "data"
+    else:
+        # Windows/Linux: data/ dans le dossier de l'application
+        return app_dir / "data"
+
 def migrate_old_files_to_data_dir(app_dir: Path):
     """
     Migre les anciens fichiers de données de la racine vers le dossier data/.
     Cette fonction est appelée pour assurer la compatibilité avec les anciennes versions.
     """
-    data_dir = app_dir / "data"
+    data_dir = get_user_data_dir(app_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     
     # Fichiers à migrer de la racine vers data/
@@ -189,17 +215,33 @@ def backup_user_data(app_dir: Path) -> Path:
     # Migrer les anciens fichiers vers data/ avant la sauvegarde
     migrate_old_files_to_data_dir(app_dir)
     
+    # Obtenir le chemin du dossier de données utilisateur
+    data_dir = get_user_data_dir(app_dir)
+    
     # Sauvegarder les fichiers protégés
     for filename in PROTECTED_FILES:
-        src = app_dir / filename
-        if src.exists():
-            if src.is_file():
-                shutil.copy2(src, backup_dir / filename)
-                logger.info(f"  - Sauvegardé : {filename}")
+        # Chercher dans data_dir et app_dir
+        src = data_dir / filename
+        if not src.exists():
+            src = app_dir / filename
+        if src.exists() and src.is_file():
+            shutil.copy2(src, backup_dir / filename)
+            logger.info(f"  - Sauvegardé : {filename}")
     
-    # Sauvegarder les dossiers protégés
+    # Sauvegarder le dossier de données utilisateur complet
+    if data_dir.exists() and data_dir.is_dir():
+        dest = backup_dir / "data"
+        shutil.copytree(data_dir, dest, dirs_exist_ok=True)
+        logger.info(f"  - Sauvegardé : data/ (dossier de données utilisateur)")
+    
+    # Sauvegarder les autres dossiers protégés (forecasts, models, etc. peuvent être dans data/)
     for dirname in PROTECTED_DIRS:
-        src = app_dir / dirname
+        if dirname == "data":
+            continue  # Déjà sauvegardé ci-dessus
+        # Chercher dans data_dir et app_dir
+        src = data_dir / dirname
+        if not src.exists():
+            src = app_dir / dirname
         if src.exists() and src.is_dir():
             dest = backup_dir / dirname
             shutil.copytree(src, dest, dirs_exist_ok=True)
@@ -215,19 +257,36 @@ def restore_user_data(backup_dir: Path, app_dir: Path):
     
     logger.info(f"Restauration des données utilisateur depuis {backup_dir}")
     
-    # Restaurer les fichiers
+    # Obtenir le chemin du dossier de données utilisateur
+    data_dir = get_user_data_dir(app_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Restaurer les fichiers protégés dans data_dir
     for filename in PROTECTED_FILES:
         src = backup_dir / filename
         if src.exists():
-            dest = app_dir / filename
+            dest = data_dir / filename
             shutil.copy2(src, dest)
             logger.info(f"  - Restauré : {filename}")
     
-    # Restaurer les dossiers
+    # Restaurer le dossier de données utilisateur complet
+    backup_data = backup_dir / "data"
+    if backup_data.exists() and backup_data.is_dir():
+        if data_dir.exists():
+            shutil.rmtree(data_dir)
+        shutil.copytree(backup_data, data_dir)
+        logger.info(f"  - Restauré : data/ (dossier de données utilisateur)")
+    
+    # Restaurer les autres dossiers protégés
     for dirname in PROTECTED_DIRS:
+        if dirname == "data":
+            continue  # Déjà restauré ci-dessus
         src = backup_dir / dirname
         if src.exists():
-            dest = app_dir / dirname
+            # Essayer dans data_dir d'abord, puis app_dir
+            dest = data_dir / dirname
+            if not dest.parent.exists():
+                dest = app_dir / dirname
             if dest.exists():
                 shutil.rmtree(dest)
             shutil.copytree(src, dest)
@@ -445,7 +504,7 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # 5.1. Gérer meteo_dataset.csv de manière conditionnelle
         # Si le fichier existe déjà localement (utilisateur l'a utilisé/modifié), le protéger
         # Sinon, le copier depuis la nouvelle version (première installation)
-        data_dir = app_dir / "data"
+        data_dir = get_user_data_dir(app_dir)
         data_dir.mkdir(parents=True, exist_ok=True)
         
         local_meteo = data_dir / "meteo_dataset.csv"
@@ -473,8 +532,9 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
                 shutil.copy2(new_meteo_path, local_meteo)
         
         # 6. Exécuter les migrations de base de données si nécessaire
-        # Le fichier de base de données est maintenant dans data/
-        db_path = app_dir / "data" / "recoltes.db"
+        # Le fichier de base de données est maintenant dans le dossier de données utilisateur
+        data_dir = get_user_data_dir(app_dir)
+        db_path = data_dir / "recoltes.db"
         if db_path.exists():
             current_schema_version = get_db_schema_version(db_path)
             if current_schema_version < target_schema_version:

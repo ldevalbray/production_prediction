@@ -170,11 +170,16 @@ def handle_generic_error(e):
     logger.error(f"Erreur non gérée : {e}", exc_info=True)
     return jsonify({"error": "Une erreur interne est survenue"}), 500
 
-# Configuration - Utiliser get_base_path() pour les chemins dans l'exécutable
-BASE_PATH = get_base_path()
-LAST_RUN_FILE = str(BASE_PATH / "last_runs.json")
-EXCEL_PATH = str(BASE_PATH / "recoltes_fraises.xlsx")
-FORECASTS_DIR = str(BASE_PATH / "forecasts")
+# Configuration - Utiliser config.py pour les chemins (cohérent avec le reste de l'application)
+try:
+    from config import LAST_RUN_FILE, EXCEL_PATH, FORECASTS_DIR, BASE_DIR
+    BASE_PATH = BASE_DIR
+except ImportError:
+    # Fallback si config n'est pas disponible
+    BASE_PATH = get_base_path()
+    LAST_RUN_FILE = str(BASE_PATH / "last_runs.json")
+    EXCEL_PATH = str(BASE_PATH / "recoltes_fraises.xlsx")
+    FORECASTS_DIR = str(BASE_PATH / "forecasts")
 SERVER_HOST = os.environ.get("PEPINIERE_HOST", "127.0.0.1")
 SERVER_PORT = int(os.environ.get("PEPINIERE_PORT", "5000"))
 SERVER_BASE_URL = os.environ.get("PEPINIERE_BASE_URL", f"http://{SERVER_HOST}:{SERVER_PORT}")
