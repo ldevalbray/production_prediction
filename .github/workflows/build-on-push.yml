@@ -46,8 +46,26 @@ jobs:
         working-directory: ./frontend
         run: npm run build
       
+      - name: Clean build directories
+        run: |
+          if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+        shell: pwsh
+      
       - name: Build Windows executable
         run: python scripts/build_windows.py
+        shell: pwsh
+      
+      - name: Verify no user data in build
+        run: |
+          $dataFiles = Get-ChildItem -Path dist/PepiniereValbray -Recurse -Include "recoltes.db","recoltes_fraises.xlsx","last_runs.json","model_fraises_v2.pkl" -ErrorAction SilentlyContinue
+          if ($dataFiles) {
+            Write-Host "❌ ERREUR: Fichiers de données utilisateur trouvés dans le build:"
+            $dataFiles | ForEach-Object { Write-Host "  - $($_.FullName)" }
+            exit 1
+          } else {
+            Write-Host "✅ Aucun fichier de données utilisateur dans le build"
+          }
         shell: pwsh
       
       - name: Create Windows ZIP archive
@@ -103,8 +121,22 @@ jobs:
         working-directory: ./frontend
         run: npm run build
       
+      - name: Clean build directories
+        run: |
+          rm -rf dist build
+      
       - name: Build macOS application
         run: python scripts/build_macos.py
+      
+      - name: Verify no user data in build
+        run: |
+          if find dist/PepiniereValbray.app -name "recoltes.db" -o -name "recoltes_fraises.xlsx" -o -name "last_runs.json" -o -name "model_fraises_v2.pkl" 2>/dev/null | grep -q .; then
+            echo "❌ ERREUR: Fichiers de données utilisateur trouvés dans le build:"
+            find dist/PepiniereValbray.app -name "recoltes.db" -o -name "recoltes_fraises.xlsx" -o -name "last_runs.json" -o -name "model_fraises_v2.pkl" 2>/dev/null
+            exit 1
+          else
+            echo "✅ Aucun fichier de données utilisateur dans le build"
+          fi
       
       - name: Create macOS DMG
         run: |
