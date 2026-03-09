@@ -79,6 +79,10 @@ def get_script_path(script_name):
         if script_path.exists():
             return str(script_path)
     
-    # En développement ou si non trouvé, retourner le nom du script
+    # En développement : résoudre vers scripts/<script_name> depuis la racine du projet (chemin absolu)
+    scripts_dir = (Path(__file__).parent / "scripts").resolve()
+    script_path = scripts_dir / script_name
+    if script_path.exists():
+        return str(script_path.resolve())
     return script_name
 

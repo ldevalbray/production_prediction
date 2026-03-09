@@ -107,7 +107,7 @@ for df in [df_recoltes, params]:
 df_recoltes = df_recoltes.merge(params, on=["variety"], how="left")
 
 
-# Vérifie si plusieurs colonnes nb_rangees existent après fusion
+# Vérifie si plusieurs colonnes nb_rangees / parcelle existent après fusion (doublon si load_recoltes_with_params déjà fusionné)
 if "nb_rangees_x" in df_recoltes.columns and "nb_rangees_y" in df_recoltes.columns:
     df_recoltes["nb_rangees"] = df_recoltes["nb_rangees_x"].fillna(df_recoltes["nb_rangees_y"])
     df_recoltes.drop(columns=["nb_rangees_x", "nb_rangees_y"], inplace=True)
@@ -115,6 +115,13 @@ elif "nb_rangees_x" in df_recoltes.columns:
     df_recoltes.rename(columns={"nb_rangees_x": "nb_rangees"}, inplace=True)
 elif "nb_rangees_y" in df_recoltes.columns:
     df_recoltes.rename(columns={"nb_rangees_y": "nb_rangees"}, inplace=True)
+if "parcelle_x" in df_recoltes.columns and "parcelle_y" in df_recoltes.columns:
+    df_recoltes["parcelle"] = df_recoltes["parcelle_x"].fillna(df_recoltes["parcelle_y"])
+    df_recoltes.drop(columns=["parcelle_x", "parcelle_y"], inplace=True)
+elif "parcelle_x" in df_recoltes.columns:
+    df_recoltes.rename(columns={"parcelle_x": "parcelle"}, inplace=True)
+elif "parcelle_y" in df_recoltes.columns:
+    df_recoltes.rename(columns={"parcelle_y": "parcelle"}, inplace=True)
 
 # Vérification post-fusion
 if "nb_rangees" not in df_recoltes.columns:
@@ -296,6 +303,19 @@ def calculate_jours_since_last_recolte_globale(row):
 df_recoltes["jours_since_last_recolte_globale"] = df_recoltes.apply(calculate_jours_since_last_recolte_globale, axis=1)
 
 df_recoltes["kg_par_rangee_prev_day"] = df_recoltes.groupby(["parcelle", "variety"])["kg_par_rangee"].shift(1)
+
+# === FEATURES DÉBUT/FIN DE SAISON ===
+print("📅 Ajout des features début/fin de saison...")
+df_recoltes["year"] = df_recoltes["date"].dt.year
+first_per_year = df_recoltes.groupby("year")["date"].transform("min")
+df_recoltes["jours_depuis_premiere_recolte_annee"] = (df_recoltes["date"] - first_per_year).dt.days.clip(lower=0)
+
+df_recoltes["moyenne_7j_kg_par_rangee"] = (
+    df_recoltes.groupby(["parcelle", "variety"])["kg_par_rangee"]
+    .transform(lambda s: s.shift(1).rolling(7, min_periods=1).mean())
+)
+df_recoltes["moyenne_7j_kg_par_rangee"] = df_recoltes["moyenne_7j_kg_par_rangee"].fillna(0)
+print("✅ Features 'jours_depuis_premiere_recolte_annee' et 'moyenne_7j_kg_par_rangee' ajoutées.")
 
 print(f"📊 Données récoltes : {len(df_recoltes)} lignes, dernière date = {df_recoltes['date'].max().date()}")
 print(f"   Jours de récolte : {sorted(df_recoltes['jour_semaine'].unique())} (0=Lundi, 6=Dimanche)")

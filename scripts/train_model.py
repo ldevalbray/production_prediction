@@ -63,6 +63,12 @@ if "jours_since_last_recolte" in df.columns:
 if "jours_since_last_recolte_globale" in df.columns:
     features.append("jours_since_last_recolte_globale")
     print("✅ Feature 'jours_since_last_recolte_globale' détectée et ajoutée au modèle.")
+if "jours_depuis_premiere_recolte_annee" in df.columns:
+    features.append("jours_depuis_premiere_recolte_annee")
+    print("✅ Feature 'jours_depuis_premiere_recolte_annee' détectée et ajoutée au modèle.")
+if "moyenne_7j_kg_par_rangee" in df.columns:
+    features.append("moyenne_7j_kg_par_rangee")
+    print("✅ Feature 'moyenne_7j_kg_par_rangee' détectée et ajoutée au modèle.")
 
 # Encodage simple des variables catégorielles
 df = pd.get_dummies(df, columns=["parcelle", "variety"], drop_first=True)

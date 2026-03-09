@@ -13,7 +13,8 @@ except ImportError:
     def is_pyinstaller():
         return False
     def get_script_path(script_name):
-        return script_name
+        script_path = (Path(__file__).parent / "scripts" / script_name).resolve()
+        return str(script_path) if script_path.exists() else script_name
 
 # Import de la configuration centralisée pour les chemins
 try:

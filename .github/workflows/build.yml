@@ -45,6 +45,8 @@ jobs:
       - name: Build frontend
         working-directory: ./frontend
         run: npm run build
+        env:
+          CI: false
       
       - name: Clean build directories
         run: |
@@ -120,6 +122,8 @@ jobs:
       - name: Build frontend
         working-directory: ./frontend
         run: npm run build
+        env:
+          CI: false
       
       - name: Clean build directories
         run: |

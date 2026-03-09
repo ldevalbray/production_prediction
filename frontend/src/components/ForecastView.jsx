@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -29,6 +29,7 @@ function ForecastView() {
   const [selectedVariety, setSelectedVariety] = useState(null);
   const [status, setStatus] = useState({ scriptRunning: false, scriptMode: null });
   const [seasonError, setSeasonError] = useState(null);
+  const wasGeneratingForecastRef = useRef(false);
 
   const hasActiveFilters = selectedDate || selectedParcelle || selectedVariety;
 
@@ -58,12 +59,14 @@ function ForecastView() {
     fetchLatestForecast();
   }, []);
 
-  // Rafraîchir les prévisions quand le script se termine
+  // Rafraîchir les prévisions quand le script de génération se termine (le backend remet scriptMode à null à la fin, donc on détecte la transition)
   useEffect(() => {
-    if (!status.scriptRunning && status.scriptMode === 'forecast') {
-      // Réinitialiser l'erreur de saison si la génération a réussi
+    if (status.scriptRunning && status.scriptMode === 'forecast') {
+      wasGeneratingForecastRef.current = true;
+    }
+    if (!status.scriptRunning && wasGeneratingForecastRef.current) {
+      wasGeneratingForecastRef.current = false;
       setSeasonError(null);
-      // Attendre un peu pour que le fichier soit créé
       const timeoutId = setTimeout(() => {
         fetchLatestForecast();
       }, 2000);
@@ -105,9 +108,12 @@ function ForecastView() {
       console.error('Erreur lors du chargement des prévisions:', err);
       const errorMessage = err.response?.data?.error || 'Erreur lors du chargement des prévisions';
       setError(errorMessage);
-      // Si c'est une erreur 404 (aucune prévision), ne pas définir forecast pour afficher le message approprié
+      // Si c'est une erreur 404 (aucune prévision), afficher le message spécifique "aucune variété en saison"
       if (err.response?.status === 404) {
         setForecast(null);
+        setSeasonError(
+          'Aucune variété n\'est en saison pour le mois en cours. Pour générer des prévisions, configurez pour chaque variété le début et la fin de saison (mois) dans Paramètres, onglet Parcelles.'
+        );
       }
     } finally {
       setLoading(false);
@@ -338,9 +344,11 @@ function ForecastView() {
                 <p className="text-sm text-muted-foreground max-w-md">
                   {error && error.includes('Aucune prévision trouvée') ? (
                     <>
-                      Aucune prévision n'a été générée. Cela peut être dû au fait qu'aucune variété n'est actuellement en saison de plantation.
+                      Aucune variété n&apos;est actuellement en saison pour le mois en cours, ou aucune prévision n&apos;a encore été générée.
                       <br />
-                      <span className="text-xs mt-2 block">Vérifiez les paramètres de saison (saison_debut / saison_fin) dans vos paramètres.</span>
+                      <span className="text-xs mt-2 block font-medium">
+                        Configurez pour chaque variété le <strong>début de saison</strong> et la <strong>fin de saison</strong> (mois 1 à 12) dans <strong>Paramètres → Parcelles</strong>, puis relancez la génération.
+                      </span>
                     </>
                   ) : (
                     'Générez des prévisions depuis le tableau de bord'

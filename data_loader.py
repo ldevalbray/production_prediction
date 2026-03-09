@@ -8,13 +8,15 @@ import os
 
 # Utiliser config.py si disponible, sinon fallback
 try:
-    from config import EXCEL_PATH
+    from config import EXCEL_PATH, DB_PATH
+    _DB_PATH = Path(DB_PATH)
 except ImportError:
     # Fallback: chercher dans data/ puis à la racine
     BASE_DIR = Path(__file__).parent.resolve()
     data_path = BASE_DIR / "data" / "recoltes_fraises.xlsx"
     root_path = BASE_DIR / "recoltes_fraises.xlsx"
     EXCEL_PATH = str(data_path if data_path.exists() else root_path)
+    _DB_PATH = Path("recoltes.db")
 USE_DB = os.environ.get("USE_DB", "true").lower() == "true"
 
 def _try_db():
@@ -38,7 +40,7 @@ def load_parametres():
     """Charge les paramètres depuis SQLite ou Excel."""
     if USE_DB:
         db_available, db_funcs = _try_db()
-        if db_available and Path("recoltes.db").exists():
+        if db_available and _DB_PATH.exists():
             df = db_funcs['get_parametres']()
             if not df.empty:
                 # Normaliser les colonnes pour compatibilité
@@ -61,7 +63,7 @@ def load_recoltes():
     """Charge les récoltes depuis SQLite ou Excel."""
     if USE_DB:
         db_available, db_funcs = _try_db()
-        if db_available and Path("recoltes.db").exists():
+        if db_available and _DB_PATH.exists():
             df = db_funcs['get_recoltes']()
             if not df.empty:
                 # Normaliser
@@ -80,7 +82,7 @@ def load_jour_courant():
     """Charge les données du jour courant depuis SQLite ou Excel."""
     if USE_DB:
         db_available, db_funcs = _try_db()
-        if db_available and Path("recoltes.db").exists():
+        if db_available and _DB_PATH.exists():
             df = db_funcs['get_jour_courant']()
             if not df.empty:
                 df['variety'] = df['variety'].astype(str).str.strip().str.lower()
@@ -101,7 +103,7 @@ def load_plants_par_annee():
     """Charge les plants par année depuis SQLite ou Excel."""
     if USE_DB:
         db_available, db_funcs = _try_db()
-        if db_available and Path("recoltes.db").exists():
+        if db_available and _DB_PATH.exists():
             df = db_funcs['get_plants_par_annee']()
             if not df.empty:
                 df['variety'] = df['variety'].astype(str).str.strip().str.lower()
@@ -127,7 +129,7 @@ def load_recolte_quotidienne():
     """Charge la configuration de récolte quotidienne depuis SQLite ou Excel."""
     if USE_DB:
         db_available, db_funcs = _try_db()
-        if db_available and Path("recoltes.db").exists():
+        if db_available and _DB_PATH.exists():
             df = db_funcs['get_recolte_quotidienne']()
             if not df.empty:
                 return df

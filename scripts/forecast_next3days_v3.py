@@ -541,6 +541,46 @@ if not df_pred.empty:
     else:
         print("ℹ️ Aucun 'Jour_courant' renseigné — prévision basée uniquement sur les données historiques saisonnières.")
 
+# === FEATURES DÉBUT/FIN DE SAISON (PRÉVISION) ===
+if not df_pred.empty:
+    # Première date de récolte de l'année courante
+    df_hist_this_year = df_hist[df_hist["date"].dt.year == current_year]
+    if not df_hist_this_year.empty:
+        first_harvest_date = df_hist_this_year["date"].min()
+    else:
+        first_harvest_date = pd.Timestamp.now().normalize()
+
+    df_pred["jours_depuis_premiere_recolte_annee"] = (df_pred["date"] - first_harvest_date).dt.days
+    df_pred["jours_depuis_premiere_recolte_annee"] = df_pred["jours_depuis_premiere_recolte_annee"].clip(lower=0)
+
+    # Moyenne 7j kg_par_rangee par (parcelle, variety) : derniers 7 points connus (historique + jour courant si présent)
+    hist_kg = df_hist[["parcelle", "variety", "date", "kg_total", "nb_rangees"]].copy()
+    hist_kg["kg_par_rangee"] = hist_kg["kg_total"] / hist_kg["nb_rangees"].replace(0, np.nan)
+    hist_kg = hist_kg.dropna(subset=["kg_par_rangee"])
+
+    today_norm = pd.Timestamp.now().normalize()
+    mean_7j_list = []
+    for _, row in df_pred[["parcelle", "variety"]].drop_duplicates().iterrows():
+        parcelle, variety = row["parcelle"], row["variety"]
+        sub = hist_kg[(hist_kg["parcelle"] == parcelle) & (hist_kg["variety"] == variety)].sort_values("date")
+        vals = sub["kg_par_rangee"].tolist()
+        if not df_jour.empty and "kg_par_rangee" in df_jour.columns:
+            j = df_jour[(df_jour["parcelle"] == parcelle) & (df_jour["variety"] == variety)]
+            if not j.empty and not pd.isna(j["kg_par_rangee"].iloc[0]):
+                vals.append(j["kg_par_rangee"].iloc[0])
+                vals = sorted(zip([*sub["date"].tolist(), today_norm], vals), key=lambda x: x[0])[-7:]
+                vals = [v for _, v in vals]
+            else:
+                vals = vals[-7:]
+        else:
+            vals = vals[-7:]
+        mean_7j = np.mean(vals) if vals else 0.0
+        mean_7j_list.append({"parcelle": parcelle, "variety": variety, "moyenne_7j_kg_par_rangee": mean_7j})
+
+    df_mean_7j = pd.DataFrame(mean_7j_list)
+    df_pred = df_pred.merge(df_mean_7j, on=["parcelle", "variety"], how="left")
+    df_pred["moyenne_7j_kg_par_rangee"] = df_pred["moyenne_7j_kg_par_rangee"].fillna(0)
+    print("✅ Features 'jours_depuis_premiere_recolte_annee' et 'moyenne_7j_kg_par_rangee' ajoutées aux prévisions.")
 
 # Sauvegarde temporaire des identifiants et données météo avant encodage
 # Inclure les données météo dans l'export (elles sont déjà dans df_pred depuis la génération)
@@ -603,6 +643,20 @@ else:
     merged["confidence_min_kg_total"] = (merged["predicted_kg_total"] - merged["predicted_std_kg_total"]).clip(lower=0)
     merged["confidence_max_kg_total"] = merged["predicted_kg_total"] + merged["predicted_std_kg_total"]
 
+    # Lissage début de saison : réduire les prévisions pour les 7 premiers jours après la première récolte
+    if "jours_depuis_premiere_recolte_annee" in df_pred.columns:
+        merged["jours_depuis_premiere_recolte_annee"] = df_pred["jours_depuis_premiere_recolte_annee"].values
+        ramp_days = 7
+        scale = np.minimum(1.0, (merged["jours_depuis_premiere_recolte_annee"] + 1) / ramp_days)
+        merged["predicted_kg_par_rangee"] = merged["predicted_kg_par_rangee"] * scale
+        merged["predicted_std_par_rangee"] = merged["predicted_std_par_rangee"] * scale
+        merged["predicted_kg_total"] = merged["predicted_kg_par_rangee"] * merged["nb_rangees"]
+        merged["predicted_std_kg_total"] = merged["predicted_std_par_rangee"] * merged["nb_rangees"]
+        merged["confidence_min_kg_total"] = (merged["predicted_kg_total"] - merged["predicted_std_kg_total"]).clip(lower=0)
+        merged["confidence_max_kg_total"] = merged["predicted_kg_total"] + merged["predicted_std_kg_total"]
+        merged.drop(columns=["jours_depuis_premiere_recolte_annee"], inplace=True, errors="ignore")
+        print("✅ Lissage début de saison appliqué (rampe sur 7 jours).")
+
     df_pred = merged.copy()
 
 # Réorganiser les colonnes pour un affichage plus clair
@@ -634,69 +688,78 @@ except ImportError:
 forecast_date = datetime.now().strftime("%Y-%m-%d")
 
 if USE_DB:
-    # Préparer le DataFrame pour la base de données
-    # S'assurer que la colonne 'date' est au format string pour la DB
-    df_pred_db = df_pred.copy()
-    if 'date' in df_pred_db.columns:
-        df_pred_db['date'] = df_pred_db['date'].dt.strftime('%Y-%m-%d')
-    
-    # Mapper les colonnes météo vers les noms attendus par la base de données
-    column_mapping = {
-        'temp_max': 'temperature_max',
-        'temp_min': 'temperature_min',
-        'rain_mm': 'precipitation_sum',
-        'sun_hours': 'sunshine_duration',
-        'humidity': 'relative_humidity_mean',
-        'shortwave_radiation': 'shortwave_radiation_sum'
-    }
-    
-    # Renommer les colonnes si elles existent
-    for old_name, new_name in column_mapping.items():
-        if old_name in df_pred_db.columns:
-            df_pred_db[new_name] = df_pred_db[old_name]
-    
-    # Convertir sun_hours de heures en secondes si nécessaire (la DB stocke en secondes)
-    if 'sunshine_duration' in df_pred_db.columns:
-        # Si la valeur est < 24, c'est probablement en heures, convertir en secondes
-        df_pred_db['sunshine_duration'] = df_pred_db['sunshine_duration'].apply(
-            lambda x: x * 3600.0 if x and x < 24 else x
-        )
-    
-    # Sauvegarder dans la base de données
-    count = save_forecast(forecast_date, df_pred_db)
-    print(f"\n💾 {count} prévisions sauvegardées dans la base de données (date: {forecast_date})")
-    
-    # Optionnel : exporter aussi en Excel pour compatibilité
-    try:
-        output_path = export_forecast_to_excel(forecast_date=forecast_date)
-        print(f"📦 Prévisions également exportées en Excel : {output_path}")
-    except Exception as e:
-        print(f"⚠️ Export Excel optionnel échoué : {e}")
+    if df_pred.empty:
+        print("\nℹ️ Aucune prévision à enregistrer (aucune variété en saison). Base de données non mise à jour.")
+    else:
+        # Préparer le DataFrame pour la base de données
+        # S'assurer que la colonne 'date' est au format string pour la DB
+        df_pred_db = df_pred.copy()
+        if 'date' in df_pred_db.columns:
+            if pd.api.types.is_datetime64_any_dtype(df_pred_db['date']):
+                df_pred_db['date'] = df_pred_db['date'].dt.strftime('%Y-%m-%d')
+            else:
+                df_pred_db['date'] = df_pred_db['date'].astype(str)
+        
+        # Mapper les colonnes météo vers les noms attendus par la base de données
+        column_mapping = {
+            'temp_max': 'temperature_max',
+            'temp_min': 'temperature_min',
+            'rain_mm': 'precipitation_sum',
+            'sun_hours': 'sunshine_duration',
+            'humidity': 'relative_humidity_mean',
+            'shortwave_radiation': 'shortwave_radiation_sum'
+        }
+        
+        # Renommer les colonnes si elles existent
+        for old_name, new_name in column_mapping.items():
+            if old_name in df_pred_db.columns:
+                df_pred_db[new_name] = df_pred_db[old_name]
+        
+        # Convertir sun_hours de heures en secondes si nécessaire (la DB stocke en secondes)
+        if 'sunshine_duration' in df_pred_db.columns:
+            # Si la valeur est < 24, c'est probablement en heures, convertir en secondes
+            df_pred_db['sunshine_duration'] = df_pred_db['sunshine_duration'].apply(
+                lambda x: x * 3600.0 if x and x < 24 else x
+            )
+        
+        # Sauvegarder dans la base de données
+        count = save_forecast(forecast_date, df_pred_db)
+        print(f"\n💾 {count} prévisions sauvegardées dans la base de données (date: {forecast_date})")
+        
+        # Optionnel : exporter aussi en Excel pour compatibilité
+        try:
+            output_path = export_forecast_to_excel(forecast_date=forecast_date)
+            print(f"📦 Prévisions également exportées en Excel : {output_path}")
+        except Exception as e:
+            print(f"⚠️ Export Excel optionnel échoué : {e}")
 else:
     # Fallback : export Excel uniquement (ancien comportement)
-    FORECASTS_DIR.mkdir(exist_ok=True)
-    output_path = FORECASTS_DIR / f"forecast_week_{forecast_date}.xlsx"
-    
-    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        df_pred.to_excel(writer, index=False, sheet_name="Prévisions")
-    
-    # Mise en forme auto (colonnes élargies)
-    wb = load_workbook(output_path)
-    ws = wb["Prévisions"]
-    for col in ws.columns:
-        max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
-        adjusted_width = min(max_length + 2, 40)
-        ws.column_dimensions[get_column_letter(col[0].column)].width = adjusted_width
-    
-    # Style d'en-tête (gras + fond gris clair)
-    from openpyxl.styles import Font, PatternFill
-    header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.fill = header_fill
-    
-    wb.save(output_path)
-    print(f"\n📦 Prévisions exportées : {output_path}")
+    if df_pred.empty:
+        print("\nℹ️ Aucune prévision à exporter (aucune variété en saison).")
+    else:
+        FORECASTS_DIR.mkdir(exist_ok=True)
+        output_path = FORECASTS_DIR / f"forecast_week_{forecast_date}.xlsx"
+        
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            df_pred.to_excel(writer, index=False, sheet_name="Prévisions")
+        
+        # Mise en forme auto (colonnes élargies)
+        wb = load_workbook(output_path)
+        ws = wb["Prévisions"]
+        for col in ws.columns:
+            max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
+            adjusted_width = min(max_length + 2, 40)
+            ws.column_dimensions[get_column_letter(col[0].column)].width = adjusted_width
+        
+        # Style d'en-tête (gras + fond gris clair)
+        from openpyxl.styles import Font, PatternFill
+        header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.fill = header_fill
+        
+        wb.save(output_path)
+        print(f"\n📦 Prévisions exportées : {output_path}")
 
 # === RÉSUMÉ JOURNALIER EN CONSOLE ===
 if df_pred.empty:
