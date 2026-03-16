@@ -55,9 +55,9 @@ def _candidate_version_files(base_path: Path) -> List[Path]:
         candidates.append(get_user_data_dir(base_path) / VERSION_FILE)
         candidates.append(base_path / VERSION_FILE)
     else:
-        # Windows/Linux: emplacement historique + fallback data/
+        # Windows/Linux: priorité stricte au fichier à la racine de l'app.
+        # Évite de relire un ancien marqueur dans data/ après une réinstallation manuelle.
         candidates.append(base_path / VERSION_FILE)
-        candidates.append(get_user_data_dir(base_path) / VERSION_FILE)
 
     # Dédoublonner en préservant l'ordre
     seen = set()
