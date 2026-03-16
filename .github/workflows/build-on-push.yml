@@ -286,7 +286,7 @@ jobs:
             ### Notes
             
             - Aucune installation de Python n'est nécessaire
-            - L'application démarre un serveur web local sur http://127.0.0.1:5000
+            - L'application démarre un serveur web local sur http://127.0.0.1:5001 (ou port libre suivant)
             - Les données sont stockées localement dans le dossier de l'application
             - Cette release est générée automatiquement à chaque push sur main
             

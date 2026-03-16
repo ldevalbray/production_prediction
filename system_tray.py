@@ -24,7 +24,7 @@ except ImportError:
 class SystemTrayManager:
     """Gère l'icône système de l'application."""
     
-    def __init__(self, server_url="http://127.0.0.1:5000", on_quit=None):
+    def __init__(self, server_url="http://127.0.0.1:5001", on_quit=None):
         """
         Initialise le gestionnaire d'icône système.
         

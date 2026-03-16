@@ -182,7 +182,8 @@ except ImportError:
     EXCEL_PATH = str(BASE_PATH / "recoltes_fraises.xlsx")
     FORECASTS_DIR = str(BASE_PATH / "forecasts")
 SERVER_HOST = os.environ.get("PEPINIERE_HOST", "127.0.0.1")
-SERVER_PORT = int(os.environ.get("PEPINIERE_PORT", "5000"))
+# Port par défaut déplacé sur 5001 pour éviter les conflits fréquents avec des services locaux sur 5000.
+SERVER_PORT = int(os.environ.get("PEPINIERE_PORT", "5001"))
 SERVER_BASE_URL = os.environ.get("PEPINIERE_BASE_URL", f"http://{SERVER_HOST}:{SERVER_PORT}")
 
 # Créer le dossier forecasts s'il n'existe pas
