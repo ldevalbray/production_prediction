@@ -112,6 +112,9 @@ def build_executable():
     print()
     frontend_built = build_frontend()
     print()
+    if not frontend_built:
+        print("[ERROR] Build annule: le frontend React est requis pour l'application Windows.")
+        return False
     
     # Nom de l'application
     app_name = "PepiniereValbray"
@@ -162,10 +165,7 @@ def build_executable():
         print("   1. Distribuez TOUT le dossier 'dist/PepiniereValbray/'")
         print("   2. L'utilisateur doit double-cliquer sur PepiniereValbray.exe")
         print("   3. Les fichiers de donnees sont inclus dans l'executable")
-        if frontend_built:
-            print("   4. [OK] Le frontend React est inclus")
-        else:
-            print("   4. [WARNING] Le frontend React n'est PAS inclus (non compile)")
+        print("   4. [OK] Le frontend React est inclus")
         print("   5. L'application demarre un serveur web local sur http://127.0.0.1:5000")
         print("   6. Testez l'executable avant de le distribuer")
         print()

@@ -20,9 +20,10 @@ block_cipher = None
 base_dir = Path(os.getcwd())
 frontend_build = base_dir / 'frontend' / 'build'
 if not frontend_build.exists() or not (frontend_build / 'index.html').exists():
-    print("[WARNING] ATTENTION: Le frontend React n'est pas compile!")
-    print("   Veuillez executer: cd frontend && npm run build")
-    print("   Poursuite de la generation sans le frontend...")
+    raise SystemExit(
+        "[ERROR] Frontend React introuvable. "
+        "Executez 'cd frontend && npm run build' avant de lancer PyInstaller."
+    )
 
 # Scripts Python à inclure (chemins relatifs à la racine du projet)
 scripts = [
@@ -79,12 +80,12 @@ if frontend_build.exists() and (frontend_build / 'index.html').exists():
             # Chemin relatif depuis frontend/build
             rel_path = src_path.relative_to(frontend_build)
             # Destination dans l'exécutable: frontend/build/...
-            dest_path = 'frontend/build' / rel_path.parent
+            dest_path = Path('frontend/build') / rel_path.parent
             frontend_files.append((str(src_path), str(dest_path)))
     datas.extend(frontend_files)
     print(f"[OK] Frontend React inclus ({len(frontend_files)} fichiers)")
 else:
-    print("[WARNING] Frontend React non inclus (non compile)")
+    raise SystemExit("[ERROR] Frontend React non inclus (build manquant).")
 
 # Modules cachés nécessaires
 hiddenimports = [

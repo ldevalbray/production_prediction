@@ -10,7 +10,7 @@ import { Play, Plus, Package, Calendar, TrendingUp, Loader2, AlertCircle, Edit2,
 import DataEntryModal from './DataEntryModal';
 import { UpdateNotification } from './UpdateNotification';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || `${window.location.origin}/api`;
 
 const fadeIn = {
   initial: { opacity: 0 },

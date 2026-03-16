@@ -101,6 +101,9 @@ def build_executable():
     print()
     frontend_built = build_frontend()
     print()
+    if not frontend_built:
+        print("❌ Build annulé : le frontend React est requis pour l'application macOS.")
+        return False
     
     # Nom de l'application
     app_name = "PepiniereValbray"
@@ -151,10 +154,7 @@ def build_executable():
         print("   1. Distribuez le fichier 'dist/PepiniereValbray.app'")
         print("   2. L'utilisateur peut double-cliquer sur l'application pour la lancer")
         print("   3. Les fichiers de données sont inclus dans l'application")
-        if frontend_built:
-            print("   4. ✅ Le frontend React est inclus")
-        else:
-            print("   4. ⚠️  Le frontend React n'est PAS inclus (non compilé)")
+        print("   4. ✅ Le frontend React est inclus")
         print("   5. L'application démarre un serveur web local sur http://127.0.0.1:5000")
         print("   6. Testez l'application avant de la distribuer")
         print()

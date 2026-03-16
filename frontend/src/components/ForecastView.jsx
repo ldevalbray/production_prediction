@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Loader2, Download, Calendar, TrendingUp, Sun, Droplets, Thermometer, BarChart3, AlertCircle, Filter, X, Play } from 'lucide-react';
 import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart, Line } from 'recharts';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || `${window.location.origin}/api`;
 
 const fadeIn = {
   initial: { opacity: 0 },

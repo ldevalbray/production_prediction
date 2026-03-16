@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Plus, Edit2, Trash2, Moon, TrendingUp, Package, Calendar, BarChart3, Filter, X, Download } from 'lucide-react';
 import DataEntryModal from './DataEntryModal';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || `${window.location.origin}/api`;
 
 const fadeIn = {
   initial: { opacity: 0 },

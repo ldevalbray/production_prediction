@@ -8,7 +8,7 @@ import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { Plus, Trash2, Edit2, Save, X, Download, Package, Settings, Sprout, Sun, Upload } from 'lucide-react';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || `${window.location.origin}/api`;
 
 function DataEntry() {
   const [activeTab, setActiveTab] = useState('recoltes');

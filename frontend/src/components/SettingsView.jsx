@@ -8,7 +8,7 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Settings, Sprout, Trash2, Plus, Save, X, Edit2, Calendar, ChevronDown, Upload, Download } from 'lucide-react';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || `${window.location.origin}/api`;
 
 const fadeIn = {
   initial: { opacity: 0 },

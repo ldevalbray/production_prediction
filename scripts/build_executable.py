@@ -94,6 +94,9 @@ def build_executable():
     print()
     frontend_built = build_frontend()
     print()
+    if not frontend_built:
+        print("❌ Build annulé : le frontend React est requis pour l'interface web.")
+        return False
     
     # Nom de l'application
     app_name = "PepiniereValbray"
@@ -161,12 +164,8 @@ def build_executable():
         print("      - meteo_dataset.csv")
         print("      - model_fraises_v2.pkl (si disponible)")
         print("   3. Les dossiers 'forecasts' et 'models_archive' seront créés automatiquement")
-        if frontend_built:
-            print("   4. Le frontend React est inclus dans l'exécutable")
-            print("   5. L'application démarre un serveur web local sur http://127.0.0.1:5000")
-        else:
-            print("   4. ⚠️  Le frontend React n'est PAS inclus (non compilé)")
-            print("      L'application fonctionnera mais l'interface web ne sera pas disponible")
+        print("   4. Le frontend React est inclus dans l'exécutable")
+        print("   5. L'application démarre un serveur web local sur http://127.0.0.1:5000")
         print("   6. Testez l'exécutable avant de le distribuer")
         print()
         

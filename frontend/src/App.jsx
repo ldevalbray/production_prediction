@@ -9,7 +9,7 @@ import RecoltesView from './components/RecoltesView';
 import SettingsView from './components/SettingsView';
 import './App.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || `${window.location.origin}/api`;
 
 // Animations optimisées - courtes et performantes
 const pageTransition = {
