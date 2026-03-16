@@ -262,13 +262,24 @@ def save_last_run(mode, status="✅ Succès"):
         json.dump(d, f, indent=2, ensure_ascii=False)
 
 
-def is_server_already_running(url=f"{SERVER_BASE_URL}/api/status", timeout=1.0):
-    """Retourne True si une instance répond déjà sur le port attendu."""
+def is_server_already_running(url=None, timeout=1.0):
+    """Retourne True uniquement si une instance Pépinière répond déjà."""
+    if url is None:
+        url = f"{SERVER_BASE_URL}/api/status"
+
+    def _looks_like_pepiniere_status(payload):
+        return isinstance(payload, dict) and ("scriptRunning" in payload or "lastRuns" in payload)
+
     # Essayer d'abord avec requests si disponible
     if requests:
         try:
             response = requests.get(url, timeout=timeout)
-            return response.ok
+            if not response.ok:
+                return False
+            try:
+                return _looks_like_pepiniere_status(response.json())
+            except Exception:
+                return False
         except Exception:
             pass
     
@@ -277,23 +288,42 @@ def is_server_already_running(url=f"{SERVER_BASE_URL}/api/status", timeout=1.0):
         import urllib.request
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            return response.status == 200
+            if response.status != 200:
+                return False
+            raw = response.read().decode("utf-8", errors="ignore")
+            payload = json.loads(raw)
+            return _looks_like_pepiniere_status(payload)
     except Exception:
         pass
-    
-    # Fallback: vérifier si le port est en écoute avec socket
+
+    return False
+
+def is_port_in_use(host, port, timeout=0.3):
+    """Retourne True si un port TCP est déjà occupé."""
     try:
         import socket
-        host, port = SERVER_HOST, SERVER_PORT
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        result = sock.connect_ex((host, port))
-        sock.close()
-        return result == 0  # Port ouvert = serveur probablement en cours
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            return sock.connect_ex((host, int(port))) == 0
     except Exception:
-        pass
-    
-    return False
+        return False
+
+def find_available_port(host, start_port, max_tries=20):
+    """Trouve un port libre à partir de start_port."""
+    for port in range(int(start_port), int(start_port) + int(max_tries)):
+        if not is_port_in_use(host, port):
+            return port
+    return None
+
+def set_server_binding(host, port):
+    """Met à jour la config runtime du serveur et l'environnement associé."""
+    global SERVER_HOST, SERVER_PORT, SERVER_BASE_URL
+    SERVER_HOST = host
+    SERVER_PORT = int(port)
+    SERVER_BASE_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
+    os.environ["PEPINIERE_HOST"] = SERVER_HOST
+    os.environ["PEPINIERE_PORT"] = str(SERVER_PORT)
+    os.environ["PEPINIERE_BASE_URL"] = SERVER_BASE_URL
 
 
 def trigger_model_update_async(delay=MODEL_AUTO_UPDATE_DELAY):
@@ -1387,10 +1417,11 @@ def api_download_update():
         # Installer la mise à jour (version du schéma cible = 1 pour l'instant)
         install_update(zip_path, app_dir, target_schema_version=1)
         
-        return jsonify({
-            "success": True, 
-            "message": "Mise à jour installée avec succès. Veuillez redémarrer l'application pour appliquer les changements."
-        })
+        message = "Mise à jour installée avec succès. Veuillez redémarrer l'application pour appliquer les changements."
+        if sys.platform == "win32":
+            message = ("Mise à jour planifiée avec succès. "
+                       "Fermez complètement l'application pour finaliser l'installation, puis relancez-la.")
+        return jsonify({"success": True, "message": message})
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour : {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -1435,6 +1466,20 @@ if sys.platform != 'win32':
     signal.signal(signal.SIGINT, signal_handler)
 
 if __name__ == '__main__':
+    # Si le port demandé est occupé par un autre service, basculer automatiquement.
+    if not is_server_already_running() and is_port_in_use(SERVER_HOST, SERVER_PORT):
+        fallback_port = find_available_port(SERVER_HOST, SERVER_PORT + 1, max_tries=20)
+        if fallback_port is not None:
+            previous_port = SERVER_PORT
+            set_server_binding(SERVER_HOST, fallback_port)
+            logger.warning(
+                f"Port {previous_port} déjà occupé par un autre service; bascule automatique sur {SERVER_PORT}."
+            )
+        else:
+            logger.error(
+                f"Port {SERVER_PORT} occupé et aucun port libre trouvé dans la plage {SERVER_PORT + 1}-{SERVER_PORT + 20}."
+            )
+
     if is_server_already_running():
         logger.info("Serveur déjà en cours d'exécution, ouverture d'une nouvelle fenêtre vers l'instance existante.")
         splash_update("Serveur déjà actif, redirection...")

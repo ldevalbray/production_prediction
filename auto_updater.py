@@ -809,6 +809,75 @@ def _find_app_bundle(app_dir: Path) -> Path:
     # Si on ne trouve pas, retourner app_dir tel quel
     return app_dir
 
+def _schedule_windows_deferred_update(new_app_dir: Path, old_app_dir: Path, extract_dir: Path, current_pid: int) -> Path:
+    """
+    Planifie l'application d'une mise à jour Windows après la fermeture du process courant.
+    Cette stratégie évite les erreurs Permission denied sur les DLL/.pyd verrouillés.
+    """
+    script_path = old_app_dir / "apply_pending_update.ps1"
+
+    def _ps_literal(value: Path) -> str:
+        # PowerShell échappe les apostrophes en les doublant.
+        return str(value).replace("'", "''")
+
+    source_root = _ps_literal(new_app_dir)
+    target_root = _ps_literal(old_app_dir)
+    extract_root = _ps_literal(extract_dir)
+
+    script_content = f"""$ErrorActionPreference = "Stop"
+$targetPid = {current_pid}
+$sourceRoot = '{source_root}'
+$targetRoot = '{target_root}'
+$extractDir = '{extract_root}'
+
+while (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) {{
+    Start-Sleep -Milliseconds 800
+}}
+
+$sourceInternal = Join-Path $sourceRoot "_internal"
+$targetInternal = Join-Path $targetRoot "_internal"
+
+if (Test-Path $targetInternal) {{
+    Remove-Item $targetInternal -Recurse -Force -ErrorAction Stop
+}}
+
+Copy-Item $sourceInternal $targetInternal -Recurse -Force -ErrorAction Stop
+
+$sourceExe = Join-Path $sourceRoot "PepiniereValbray.exe"
+$targetExe = Join-Path $targetRoot "PepiniereValbray.exe"
+if (Test-Path $sourceExe) {{
+    Copy-Item $sourceExe $targetExe -Force -ErrorAction Stop
+}}
+
+Start-Sleep -Seconds 1
+Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+"""
+
+    script_path.write_text(script_content, encoding="utf-8")
+    logger.info(f"Script de mise à jour différée généré : {script_path}")
+
+    detached_flags = 0
+    detached_flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+    detached_flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+    cmd = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(script_path),
+    ]
+    logger.info("Lancement du helper de mise à jour différée Windows...")
+    subprocess.Popen(
+        cmd,
+        cwd=str(old_app_dir),
+        creationflags=detached_flags,
+        close_fds=True
+    )
+    return script_path
+
 def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1):
     """
     Installe la mise à jour en préservant toutes les données utilisateur.
@@ -921,6 +990,25 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         
         if not new_app_dir and not new_app_bundle:
             raise Exception("Structure de l'archive invalide : dossier PepiniereValbray ou PepiniereValbray.app introuvable")
+
+        # Windows: appliquer en différé via process externe pour éviter les verrous DLL/.pyd.
+        if sys.platform == "win32" and new_app_dir:
+            old_app_dir = app_bundle if app_bundle.suffix != ".app" else app_bundle.parent
+            _schedule_windows_deferred_update(
+                new_app_dir=new_app_dir,
+                old_app_dir=old_app_dir,
+                extract_dir=extract_dir,
+                current_pid=os.getpid(),
+            )
+            # Le ZIP n'est plus nécessaire après extraction.
+            try:
+                if zip_path.exists():
+                    zip_path.unlink()
+            except Exception as e:
+                logger.warning(f"Impossible de supprimer le ZIP après planification: {e}")
+
+            logger.info("✅ Mise à jour Windows planifiée. Fermez l'application pour terminer l'installation.")
+            return True
         
         # 4. Remplacer les fichiers de l'application (SAUF les données utilisateur)
         logger.info("Remplacement des fichiers de l'application...")
