@@ -1471,12 +1471,11 @@ def check_updates_async():
     """Vérifie les mises à jour en arrière-plan au démarrage."""
     try:
         from auto_updater import check_for_updates
-        
-        # Vérifier d'abord les releases stables, puis les prereleases
-        update_info = check_for_updates(include_prerelease=False)
-        if not update_info.get("available"):
-            # Si pas de release stable, vérifier les prereleases (builds automatiques)
-            update_info = check_for_updates(include_prerelease=True)
+
+        # Canal utilisé en production ici: prereleases (builds automatiques).
+        # Évite d'initialiser installed_version sur la dernière stable (ex: 1.2.0)
+        # lors du premier démarrage d'un build prerelease.
+        update_info = check_for_updates(include_prerelease=True)
         
         if update_info.get("available"):
             latest_version = update_info.get("latest_version")

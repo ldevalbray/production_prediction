@@ -57,6 +57,17 @@ jobs:
       - name: Build Windows executable
         run: python scripts/build_windows.py
         shell: pwsh
+
+      - name: Stamp build version (Windows)
+        run: |
+          if ("${env:GITHUB_REF}".StartsWith("refs/tags/v")) {
+            $version = "${env:GITHUB_REF_NAME}".Substring(1)
+          } else {
+            $version = "dev-${env:GITHUB_SHA}".Substring(0,11)
+          }
+          Set-Content -Path "dist/PepiniereValbray/installed_version.txt" -Value $version -Encoding UTF8
+          Write-Host "✅ installed_version.txt créé: $version"
+        shell: pwsh
       
       - name: Verify no user data in build
         run: |
@@ -131,6 +142,17 @@ jobs:
       
       - name: Build macOS application
         run: python scripts/build_macos.py
+
+      - name: Stamp build version (macOS)
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="dev-${GITHUB_SHA:0:7}"
+          fi
+          mkdir -p "dist/PepiniereValbray.app/Contents/Resources/Data"
+          echo "$VERSION" > "dist/PepiniereValbray.app/Contents/Resources/Data/installed_version.txt"
+          echo "✅ installed_version.txt créé: $VERSION"
       
       - name: Verify no user data in build
         run: |

@@ -57,6 +57,15 @@ jobs:
       - name: Build Windows executable
         run: python scripts/build_windows.py
         shell: pwsh
+
+      - name: Stamp build version (Windows)
+        run: |
+          $date = Get-Date -Format "yyyyMMdd"
+          $sha = "${env:GITHUB_SHA}".Substring(0,7)
+          $version = "$date-$sha"
+          Set-Content -Path "dist/PepiniereValbray/installed_version.txt" -Value $version -Encoding UTF8
+          Write-Host "✅ installed_version.txt créé: $version"
+        shell: pwsh
       
       - name: Verify no user data in build
         run: |
@@ -131,6 +140,13 @@ jobs:
       
       - name: Build macOS application
         run: python scripts/build_macos.py
+
+      - name: Stamp build version (macOS)
+        run: |
+          VERSION="$(date +'%Y%m%d')-${GITHUB_SHA:0:7}"
+          mkdir -p "dist/PepiniereValbray.app/Contents/Resources/Data"
+          echo "$VERSION" > "dist/PepiniereValbray.app/Contents/Resources/Data/installed_version.txt"
+          echo "✅ installed_version.txt créé: $VERSION"
       
       - name: Verify no user data in build
         run: |

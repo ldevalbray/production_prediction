@@ -376,18 +376,24 @@ def check_for_updates(include_prerelease=False):
         # Cela permet de détecter les futures mises à jour
         if current_version == DEFAULT_APP_VERSION:
             try:
-                from pyinstaller_utils import get_base_path
-                base_path = get_base_path()
+                if include_prerelease:
+                    from pyinstaller_utils import get_base_path
+                    base_path = get_base_path()
 
-                written_paths = save_installed_version(latest_version, base_path=base_path)
-                if written_paths:
+                    written_paths = save_installed_version(latest_version, base_path=base_path)
+                    if written_paths:
+                        logger.info(
+                            "Version initiale enregistrée (%s): %s",
+                            ", ".join(str(p) for p in written_paths),
+                            latest_version,
+                        )
+                        # Éviter une fausse alerte de MAJ infinie au premier lancement.
+                        current_version = latest_version
+                else:
                     logger.info(
-                        "Version initiale enregistrée (%s): %s",
-                        ", ".join(str(p) for p in written_paths),
-                        latest_version,
+                        "Version initiale non persistée en mode stable-only; "
+                        "le canal prerelease gère l'initialisation."
                     )
-                    # Éviter une fausse alerte de MAJ infinie au premier lancement.
-                    current_version = latest_version
             except Exception as e:
                 logger.warning(f"Impossible d'enregistrer la version initiale : {e}")
         
