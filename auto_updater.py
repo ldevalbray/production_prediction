@@ -46,6 +46,48 @@ PROTECTED_DIRS = [
 
 logger = logging.getLogger(__name__)
 
+def _candidate_version_files(base_path: Path) -> List[Path]:
+    """Retourne les emplacements possibles du fichier de version installée."""
+    candidates: List[Path] = []
+
+    # Cas bundle macOS explicite
+    if sys.platform == "darwin" and (base_path.suffix == ".app" or (base_path / "Contents").exists()):
+        candidates.append(get_user_data_dir(base_path) / VERSION_FILE)
+        candidates.append(base_path / VERSION_FILE)
+    else:
+        # Windows/Linux: emplacement historique + fallback data/
+        candidates.append(base_path / VERSION_FILE)
+        candidates.append(get_user_data_dir(base_path) / VERSION_FILE)
+
+    # Dédoublonner en préservant l'ordre
+    seen = set()
+    unique_candidates: List[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            unique_candidates.append(path)
+    return unique_candidates
+
+def save_installed_version(installed_version: str, base_path: Optional[Path] = None) -> List[Path]:
+    """Enregistre la version installée aux emplacements compatibles."""
+    if not installed_version:
+        return []
+
+    if base_path is None:
+        from pyinstaller_utils import get_base_path
+        base_path = get_base_path()
+
+    written_paths: List[Path] = []
+    for version_file in _candidate_version_files(base_path):
+        try:
+            version_file.parent.mkdir(parents=True, exist_ok=True)
+            version_file.write_text(installed_version)
+            written_paths.append(version_file)
+        except Exception as e:
+            logger.warning(f"Impossible d'écrire la version dans {version_file}: {e}")
+    return written_paths
+
 def safe_remove(path: Path, critical: bool = False):
     """
     Supprime un fichier ou dossier de manière sécurisée, en gérant les liens symboliques.
@@ -268,27 +310,15 @@ def get_current_version():
     try:
         base_path = get_base_path()
         
-        # Pour macOS .app, chercher dans le dossier de données
-        version_file = None
-        if sys.platform == "darwin" and (base_path.suffix == ".app" or (base_path / "Contents").exists()):
-            # Chercher dans le dossier de données utilisateur
-            data_dir = get_user_data_dir(base_path)
-            version_file = data_dir / VERSION_FILE
-            # Fallback : chercher aussi à la racine du bundle
-            if not version_file.exists():
-                version_file = base_path / VERSION_FILE
-        else:
-            version_file = base_path / VERSION_FILE
-        
-        if version_file.exists():
-            version = version_file.read_text().strip()
-            if version:
-                logger.info(f"Version lue depuis {version_file}: {version}")
-                return version
-            else:
+        for version_file in _candidate_version_files(base_path):
+            if version_file.exists():
+                version = version_file.read_text().strip()
+                if version:
+                    logger.info(f"Version lue depuis {version_file}: {version}")
+                    return version
                 logger.warning(f"Fichier de version vide : {version_file}")
-        else:
-            logger.info(f"Fichier de version introuvable : {version_file}")
+            else:
+                logger.info(f"Fichier de version introuvable : {version_file}")
     except Exception as e:
         logger.warning(f"Impossible de lire la version depuis le fichier : {e}")
     
@@ -342,19 +372,16 @@ def check_for_updates(include_prerelease=False):
             try:
                 from pyinstaller_utils import get_base_path
                 base_path = get_base_path()
-                
-                # Pour macOS .app, placer le fichier dans le dossier de données
-                if sys.platform == "darwin" and (base_path.suffix == ".app" or (base_path / "Contents").exists()):
-                    # Trouver le dossier de données
-                    data_dir = get_user_data_dir(base_path)
-                    version_file = data_dir / VERSION_FILE
-                else:
-                    version_file = base_path / VERSION_FILE
-                
-                version_file.parent.mkdir(parents=True, exist_ok=True)
-                version_file.write_text(latest_version)
-                logger.info(f"Version initiale enregistrée dans {version_file}: {latest_version}")
-                # Ne pas changer current_version ici, on veut comparer avec la version par défaut
+
+                written_paths = save_installed_version(latest_version, base_path=base_path)
+                if written_paths:
+                    logger.info(
+                        "Version initiale enregistrée (%s): %s",
+                        ", ".join(str(p) for p in written_paths),
+                        latest_version,
+                    )
+                    # Éviter une fausse alerte de MAJ infinie au premier lancement.
+                    current_version = latest_version
             except Exception as e:
                 logger.warning(f"Impossible d'enregistrer la version initiale : {e}")
         
@@ -809,7 +836,13 @@ def _find_app_bundle(app_dir: Path) -> Path:
     # Si on ne trouve pas, retourner app_dir tel quel
     return app_dir
 
-def _schedule_windows_deferred_update(new_app_dir: Path, old_app_dir: Path, extract_dir: Path, current_pid: int) -> Path:
+def _schedule_windows_deferred_update(
+    new_app_dir: Path,
+    old_app_dir: Path,
+    extract_dir: Path,
+    current_pid: int,
+    target_version: Optional[str] = None
+) -> Path:
     """
     Planifie l'application d'une mise à jour Windows après la fermeture du process courant.
     Cette stratégie évite les erreurs Permission denied sur les DLL/.pyd verrouillés.
@@ -824,11 +857,14 @@ def _schedule_windows_deferred_update(new_app_dir: Path, old_app_dir: Path, extr
     target_root = _ps_literal(old_app_dir)
     extract_root = _ps_literal(extract_dir)
 
+    ps_target_version = (target_version or "").replace("'", "''")
+
     script_content = f"""$ErrorActionPreference = "Stop"
 $targetPid = {current_pid}
 $sourceRoot = '{source_root}'
 $targetRoot = '{target_root}'
 $extractDir = '{extract_root}'
+$targetVersion = '{ps_target_version}'
 
 while (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) {{
     Start-Sleep -Milliseconds 800
@@ -847,6 +883,13 @@ $sourceExe = Join-Path $sourceRoot "PepiniereValbray.exe"
 $targetExe = Join-Path $targetRoot "PepiniereValbray.exe"
 if (Test-Path $sourceExe) {{
     Copy-Item $sourceExe $targetExe -Force -ErrorAction Stop
+}}
+
+if ($targetVersion -and $targetVersion.Trim() -ne '') {{
+    Set-Content -Path (Join-Path $targetRoot "installed_version.txt") -Value $targetVersion -Encoding UTF8
+    $dataDir = Join-Path $targetRoot "data"
+    New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+    Set-Content -Path (Join-Path $dataDir "installed_version.txt") -Value $targetVersion -Encoding UTF8
 }}
 
 Start-Sleep -Seconds 1
@@ -994,11 +1037,17 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # Windows: appliquer en différé via process externe pour éviter les verrous DLL/.pyd.
         if sys.platform == "win32" and new_app_dir:
             old_app_dir = app_bundle if app_bundle.suffix != ".app" else app_bundle.parent
+            target_version = None
+            try:
+                target_version = check_for_updates(include_prerelease=True).get("latest_version")
+            except Exception as e:
+                logger.warning(f"Impossible de récupérer la version cible pour l'update différée: {e}")
             _schedule_windows_deferred_update(
                 new_app_dir=new_app_dir,
                 old_app_dir=old_app_dir,
                 extract_dir=extract_dir,
                 current_pid=os.getpid(),
+                target_version=target_version,
             )
             # Le ZIP n'est plus nécessaire après extraction.
             try:
@@ -1207,12 +1256,12 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
             update_info = check_for_updates(include_prerelease=True)
             if update_info.get("available"):
                 installed_version = update_info.get("latest_version")
-                # Pour macOS .app, placer le fichier dans Resources/Data/
-                data_dir = get_user_data_dir(app_bundle)
-                version_file = data_dir / VERSION_FILE
-                version_file.parent.mkdir(parents=True, exist_ok=True)
-                version_file.write_text(installed_version)
-                logger.info(f"Version installée enregistrée : {installed_version}")
+                written_paths = save_installed_version(installed_version, base_path=app_bundle)
+                logger.info(
+                    "Version installée enregistrée (%s): %s",
+                    ", ".join(str(p) for p in written_paths) if written_paths else "aucun emplacement",
+                    installed_version,
+                )
         except Exception as e:
             logger.warning(f"Impossible d'enregistrer la version installée : {e}")
         
