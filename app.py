@@ -1414,9 +1414,18 @@ def api_check_updates():
 def api_download_update():
     """Télécharge et installe la mise à jour."""
     try:
-        from auto_updater import get_download_url_for_platform, download_update, install_update
+        from auto_updater import check_for_updates, get_download_url_for_platform, download_update, install_update
         from pyinstaller_utils import get_base_path
-        
+
+        # Capturer la version cible avant l'installation pour l'enregistrer de manière fiable.
+        target_version = None
+        try:
+            update_info = check_for_updates(include_prerelease=True)
+            if update_info.get("available"):
+                target_version = update_info.get("latest_version")
+        except Exception as e:
+            logger.warning(f"Impossible de déterminer la version cible avant installation: {e}")
+
         download_url = get_download_url_for_platform()
         if not download_url:
             return jsonify({"error": "Aucune mise à jour disponible pour cette plateforme"}), 404
@@ -1431,7 +1440,12 @@ def api_download_update():
         zip_path = download_update(download_url, progress_callback)
         
         # Installer la mise à jour (version du schéma cible = 1 pour l'instant)
-        install_update(zip_path, app_dir, target_schema_version=1)
+        install_update(
+            zip_path,
+            app_dir,
+            target_schema_version=1,
+            installed_version_target=target_version
+        )
         
         message = "Mise à jour installée avec succès. Veuillez redémarrer l'application pour appliquer les changements."
         auto_close_scheduled = False

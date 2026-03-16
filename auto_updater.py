@@ -921,7 +921,12 @@ Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
     )
     return script_path
 
-def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1):
+def install_update(
+    zip_path: Path,
+    app_dir: Path,
+    target_schema_version: int = 1,
+    installed_version_target: Optional[str] = None
+):
     """
     Installe la mise à jour en préservant toutes les données utilisateur.
     
@@ -929,6 +934,7 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         zip_path: Chemin vers le fichier ZIP de la mise à jour
         app_dir: Dossier de l'application (peut être le bundle .app ou Contents/Resources/Data/)
         target_schema_version: Version cible du schéma de base de données
+        installed_version_target: Version attendue à enregistrer après update (si connue)
     """
     backup_dir = None
     extract_dir = None
@@ -1037,11 +1043,12 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # Windows: appliquer en différé via process externe pour éviter les verrous DLL/.pyd.
         if sys.platform == "win32" and new_app_dir:
             old_app_dir = app_bundle if app_bundle.suffix != ".app" else app_bundle.parent
-            target_version = None
-            try:
-                target_version = check_for_updates(include_prerelease=True).get("latest_version")
-            except Exception as e:
-                logger.warning(f"Impossible de récupérer la version cible pour l'update différée: {e}")
+            target_version = installed_version_target
+            if not target_version:
+                try:
+                    target_version = check_for_updates(include_prerelease=True).get("latest_version")
+                except Exception as e:
+                    logger.warning(f"Impossible de récupérer la version cible pour l'update différée: {e}")
             _schedule_windows_deferred_update(
                 new_app_dir=new_app_dir,
                 old_app_dir=old_app_dir,
@@ -1253,9 +1260,12 @@ def install_update(zip_path: Path, app_dir: Path, target_schema_version: int = 1
         # 7. Enregistrer la version installée
         # Récupérer la version depuis les informations de la release
         try:
-            update_info = check_for_updates(include_prerelease=True)
-            if update_info.get("available"):
-                installed_version = update_info.get("latest_version")
+            installed_version = installed_version_target
+            if not installed_version:
+                update_info = check_for_updates(include_prerelease=True)
+                if update_info.get("available"):
+                    installed_version = update_info.get("latest_version")
+            if installed_version:
                 written_paths = save_installed_version(installed_version, base_path=app_bundle)
                 logger.info(
                     "Version installée enregistrée (%s): %s",
