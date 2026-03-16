@@ -53,11 +53,12 @@ export function UpdateNotification() {
         setInstalling(true);
         // Attendre un peu pour que l'installation se termine
         setTimeout(() => {
-          alert('[SUCCESS] Mise a jour installee avec succes !\n\nVeuillez redemarrer l\'application pour appliquer les changements.');
+          const msg = data.message || 'Mise a jour installee avec succes.';
+          alert(`[SUCCESS] ${msg}`);
           setUpdateInfo(null);
           setDownloading(false);
           setInstalling(false);
-        }, 2000);
+        }, 1200);
       } else {
         setError(data.error || 'Erreur lors de la mise à jour');
         setDownloading(false);

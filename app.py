@@ -1363,6 +1363,22 @@ def cleanup_resources():
     
     logger.info("Nettoyage terminé")
 
+def schedule_app_shutdown(delay_seconds=2.0, reason=""):
+    """Planifie l'arrêt complet de l'application après un court délai."""
+    def _shutdown():
+        import time
+        time.sleep(max(0.0, float(delay_seconds)))
+        try:
+            logger.info(f"Arrêt programmé de l'application ({reason})")
+            cleanup_resources()
+        except Exception as e:
+            logger.warning(f"Erreur durant le cleanup avant arrêt programmé: {e}")
+        finally:
+            # Sortie forcée pour garantir la libération des verrous de fichiers Windows.
+            os._exit(0)
+
+    threading.Thread(target=_shutdown, daemon=True).start()
+
 # ===== API ENDPOINTS POUR MISE À JOUR AUTOMATIQUE =====
 
 @app.route('/api/updates/check', methods=['GET'])
@@ -1418,10 +1434,21 @@ def api_download_update():
         install_update(zip_path, app_dir, target_schema_version=1)
         
         message = "Mise à jour installée avec succès. Veuillez redémarrer l'application pour appliquer les changements."
-        if sys.platform == "win32":
+        auto_close_scheduled = False
+        if sys.platform == "win32" and is_pyinstaller():
+            # Sur Windows packagé, l'update est différée et nécessite la fermeture complète
+            # du process pour libérer les DLL/.pyd verrouillés.
             message = ("Mise à jour planifiée avec succès. "
-                       "Fermez complètement l'application pour finaliser l'installation, puis relancez-la.")
-        return jsonify({"success": True, "message": message})
+                       "L'application va se fermer automatiquement dans quelques secondes.")
+            auto_close_scheduled = True
+            schedule_app_shutdown(delay_seconds=2.5, reason="finalisation mise à jour Windows")
+
+        return jsonify({
+            "success": True,
+            "message": message,
+            "requires_restart": True,
+            "auto_close_scheduled": auto_close_scheduled,
+        })
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour : {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
