@@ -69,6 +69,12 @@ function App() {
     try {
       const response = await axios.post(`${API_BASE}/run`, { mode });
       console.log('App - Réponse du serveur:', response.data);
+      // Etat optimiste pour éviter de rater un script très court entre deux polls.
+      setStatus(prevStatus => ({
+        ...prevStatus,
+        scriptRunning: true,
+        scriptMode: mode
+      }));
       fetchStatus();
     } catch (error) {
       console.error('App - Erreur lors du lancement:', error);

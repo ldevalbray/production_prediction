@@ -7,6 +7,7 @@ import subprocess
 import sys
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 import threading
@@ -197,6 +198,7 @@ script_running = False
 script_status = {"running": False, "mode": None, "output": []}
 model_update_timer = None  # Timer pour la mise à jour différée du modèle
 MODEL_AUTO_UPDATE_DELAY = int(os.environ.get('MODEL_AUTO_UPDATE_DELAY', 30))  # 30 secondes par défaut
+MIN_STATUS_VISIBLE_SECONDS = float(os.environ.get("MIN_STATUS_VISIBLE_SECONDS", 2.5))
 
 # Stream personnalisé pour capturer les logs en temps réel
 class RealtimeOutputCapture:
@@ -332,7 +334,7 @@ def trigger_model_update_async(delay=MODEL_AUTO_UPDATE_DELAY):
     Déclenche la mise à jour du modèle après un délai.
     Le délai permet d'éviter plusieurs mises à jour si plusieurs modifications sont faites rapidement.
     """
-    global model_update_timer, script_running
+    global model_update_timer, script_running, script_status
     
     # Ne pas déclencher si une mise à jour manuelle est en cours
     if script_running:
@@ -344,11 +346,14 @@ def trigger_model_update_async(delay=MODEL_AUTO_UPDATE_DELAY):
     
     def update_worker():
         """Fonction qui exécute la mise à jour du modèle."""
-        global script_running, model_update_timer
+        global script_running, model_update_timer, script_status
         if script_running:
             return
         
         script_running = True
+        script_status["running"] = True
+        script_status["mode"] = "update"
+        script_status["output"] = ["🔄 Mise à jour automatique du modèle en cours..."]
         model_update_timer = None  # Réinitialiser le timer
         
         try:
@@ -366,14 +371,22 @@ def trigger_model_update_async(delay=MODEL_AUTO_UPDATE_DELAY):
             )
             if result.returncode == 0:
                 print("✅ Mise à jour automatique du modèle terminée avec succès")
+                script_status["output"].append("✅ Mise à jour automatique du modèle terminée avec succès")
             else:
                 print(f"⚠️ Mise à jour automatique du modèle échouée : {result.stderr[:200]}")
+                script_status["output"].append(
+                    f"⚠️ Mise à jour automatique du modèle échouée : {result.stderr[:200]}"
+                )
         except subprocess.TimeoutExpired:
             print("⚠️ Mise à jour automatique du modèle : timeout (10 minutes)")
+            script_status["output"].append("⚠️ Mise à jour automatique du modèle : timeout (10 minutes)")
         except Exception as e:
             print(f"⚠️ Erreur lors de la mise à jour automatique du modèle : {e}")
+            script_status["output"].append(f"⚠️ Erreur lors de la mise à jour automatique du modèle : {e}")
         finally:
             script_running = False
+            script_status["running"] = False
+            script_status["mode"] = None
     
     # Programmer la mise à jour après le délai
     model_update_timer = Timer(delay, update_worker)
@@ -384,10 +397,12 @@ def trigger_model_update_async(delay=MODEL_AUTO_UPDATE_DELAY):
 def get_status():
     """Retourne le statut actuel de l'application."""
     last_runs = safe_load_json(LAST_RUN_FILE)
+    running = bool(script_status["running"] or script_running)
+    mode = script_status["mode"] if script_status["mode"] else ("update" if running else None)
     return jsonify({
         "lastRuns": last_runs,
-        "scriptRunning": script_status["running"],
-        "scriptMode": script_status["mode"]
+        "scriptRunning": running,
+        "scriptMode": mode
     })
 
 @app.route('/api/run', methods=['POST'])
@@ -416,6 +431,7 @@ def run_script():
         ok = True
         err = ""
         output_capture = RealtimeOutputCapture(max_lines=100)
+        started_at = time.time()
         
         try:
             # Dans PyInstaller, importer directement le module au lieu d'utiliser subprocess
@@ -499,6 +515,13 @@ def run_script():
             output_capture.write(f"Erreur : {err}")
             output_capture.write(traceback.format_exc())
         
+        # Garantir que l'état "running" reste visible au moins un court instant
+        # pour que le polling frontend (2s) observe bien la transition.
+        elapsed = time.time() - started_at
+        remaining = max(0.0, MIN_STATUS_VISIBLE_SECONDS - elapsed)
+        if remaining > 0:
+            time.sleep(remaining)
+
         script_running = False
         script_status["running"] = False
         script_status["mode"] = None  # Réinitialiser le mode après la fin du script
@@ -609,7 +632,17 @@ def get_latest_forecast_api():
         df = get_latest_forecast()
         
         if df.empty:
-            return jsonify({"error": "Aucune prévision trouvée"}), 404
+            return jsonify({
+                "filename": None,
+                "date": None,
+                "data": [],
+                "summary": {
+                    "total_rows": 0,
+                    "dates": [],
+                    "parcelles": [],
+                    "varieties": []
+                }
+            }), 200
         
         forecast_date = get_latest_forecast_date()
         
