@@ -46,6 +46,11 @@ def build_frontend():
         print("[WARNING] Dossier frontend/ introuvable. Poursuite sans frontend...")
         return False
     
+    # Si un build valide existe déjà (ex: pré-compilé dans CI), le réutiliser.
+    if build_dir.exists() and (build_dir / "index.html").exists():
+        print("[INFO] Frontend React deja compile, reutilisation du build existant.")
+        return True
+    
     print("[INFO] Compilation du frontend React...")
     
     if not check_node():
