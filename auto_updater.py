@@ -342,10 +342,16 @@ def check_for_updates(include_prerelease=False):
             response = requests.get(releases_url, timeout=10, params={"per_page": 10})
             response.raise_for_status()
             releases = response.json()
-            
-            # Prendre la première release (la plus récente)
+
+            # L'ordre API n'est pas toujours strictement chronologique.
+            # Trier explicitement par date de publication décroissante.
             if releases:
-                release_data = releases[0]
+                valid_releases = [r for r in releases if not r.get("draft", False)]
+                valid_releases.sort(
+                    key=lambda r: (r.get("published_at") or r.get("created_at") or ""),
+                    reverse=True
+                )
+                release_data = valid_releases[0] if valid_releases else releases[0]
             else:
                 logger.info("Aucune release trouvée")
                 return {"available": False}
